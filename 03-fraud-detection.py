@@ -163,8 +163,7 @@ featured_df = (gold_df
     ])
 )
 
-# Cache for reuse
-featured_df.cache()
+# Note: .cache() not supported on serverless — skip it
 print(f"Feature-engineered transactions: {featured_df.count():,}")
 
 # COMMAND ----------
