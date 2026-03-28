@@ -11,6 +11,19 @@
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Install Dependencies
+
+# COMMAND ----------
+
+# MAGIC %pip install networkx --quiet
+
+# COMMAND ----------
+
+# MAGIC %restart_python
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Setup
 
 # COMMAND ----------
