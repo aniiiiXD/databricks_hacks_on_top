@@ -234,13 +234,14 @@ X_scaled = scaler.fit_transform(X)
 
 # --- Train Isolation Forest ---
 contamination_rate = 0.05  # Expected ~5% fraud rate
+n_estimators = 300
+max_samples = min(len(X_scaled), 10000)
+max_features = 0.8
 
-with mlflow.start_run(run_name="isolation_forest_v1") as if_run:
-    # Hyperparameters
-    n_estimators = 300
-    max_samples = min(len(X_scaled), 10000)
-    max_features = 0.8
-
+# Start MLflow run (non-fatal if it fails)
+if_run_id = None
+try:
+    mlflow.start_run(run_name="isolation_forest_v1")
     safe_log_param("model_type", "IsolationForest")
     safe_log_param("n_estimators", n_estimators)
     safe_log_param("contamination", contamination_rate)
@@ -248,60 +249,66 @@ with mlflow.start_run(run_name="isolation_forest_v1") as if_run:
     safe_log_param("max_features", max_features)
     safe_log_param("n_features", len(feature_cols))
     safe_log_param("training_rows", len(X_scaled))
-    safe_log_param("feature_cols", str(feature_cols))
+except Exception as e:
+    print(f"MLflow run setup (non-fatal): {e}")
 
-    iforest = IsolationForest(
-        n_estimators=n_estimators,
-        contamination=contamination_rate,
-        max_samples=max_samples,
-        max_features=max_features,
-        random_state=42,
-        n_jobs=-1,
-        warm_start=False
-    )
-    iforest.fit(X_scaled)
+iforest = IsolationForest(
+    n_estimators=n_estimators,
+    contamination=contamination_rate,
+    max_samples=max_samples,
+    max_features=max_features,
+    random_state=42,
+    n_jobs=-1,
+    warm_start=False
+)
+iforest.fit(X_scaled)
+print("Isolation Forest trained.")
 
-    # Predictions: -1 = anomaly, 1 = normal
-    if_predictions = iforest.predict(X_scaled)
-    if_scores = iforest.decision_function(X_scaled)  # Lower = more anomalous
+# Predictions: -1 = anomaly, 1 = normal
+if_predictions = iforest.predict(X_scaled)
+if_scores = iforest.decision_function(X_scaled)
 
-    # Normalize scores to [0, 1] where 1 = most anomalous
-    if_scores_normalized = 1 - (if_scores - if_scores.min()) / (if_scores.max() - if_scores.min() + 1e-10)
+# Normalize scores to [0, 1] where 1 = most anomalous
+if_scores_normalized = 1 - (if_scores - if_scores.min()) / (if_scores.max() - if_scores.min() + 1e-10)
 
-    pdf["if_anomaly"] = (if_predictions == -1).astype(int)
-    pdf["if_score"] = if_scores_normalized
+pdf["if_anomaly"] = (if_predictions == -1).astype(int)
+pdf["if_score"] = if_scores_normalized
 
-    # Evaluate against ground truth if available
-    if pdf["is_fraud"].notna().any():
-        y_true = pdf["is_fraud"].fillna(False).astype(int)
-        y_pred = pdf["if_anomaly"]
+# Evaluate against ground truth
+if pdf["is_fraud"].notna().any():
+    y_true = pdf["is_fraud"].fillna(False).astype(int)
+    y_pred = pdf["if_anomaly"]
 
-        precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred, average="binary", zero_division=0)
-        try:
-            auc = roc_auc_score(y_true, if_scores_normalized)
-        except:
-            auc = 0.0
+    precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred, average="binary", zero_division=0)
+    try:
+        auc = roc_auc_score(y_true, if_scores_normalized)
+    except:
+        auc = 0.0
 
-        safe_log_metric("precision", precision)
-        safe_log_metric("recall", recall)
-        safe_log_metric("f1_score", f1)
-        safe_log_metric("auc_roc", auc)
-        safe_log_metric("flagged_count", int(pdf["if_anomaly"].sum()))
-        safe_log_metric("flagged_rate", float(pdf["if_anomaly"].mean()))
+    safe_log_metric("precision", precision)
+    safe_log_metric("recall", recall)
+    safe_log_metric("f1_score", f1)
+    safe_log_metric("auc_roc", auc)
+    safe_log_metric("flagged_count", int(pdf["if_anomaly"].sum()))
+    safe_log_metric("flagged_rate", float(pdf["if_anomaly"].mean()))
 
-        print(f"Isolation Forest Results:")
-        print(f"  Precision: {precision:.4f}")
-        print(f"  Recall:    {recall:.4f}")
-        print(f"  F1 Score:  {f1:.4f}")
-        print(f"  AUC-ROC:   {auc:.4f}")
-        print(f"  Flagged:   {pdf['if_anomaly'].sum():,} / {len(pdf):,} ({pdf['if_anomaly'].mean()*100:.2f}%)")
+    print(f"Isolation Forest Results:")
+    print(f"  Precision: {precision:.4f}")
+    print(f"  Recall:    {recall:.4f}")
+    print(f"  F1 Score:  {f1:.4f}")
+    print(f"  AUC-ROC:   {auc:.4f}")
+    print(f"  Flagged:   {pdf['if_anomaly'].sum():,} / {len(pdf):,} ({pdf['if_anomaly'].mean()*100:.2f}%)")
 
-    # Log model
-    safe_log_model(iforest, "isolation_forest_model")
-    safe_log_model(scaler, "scaler")
+safe_log_model(iforest, "isolation_forest_model")
+safe_log_model(scaler, "scaler")
 
-    if_run_id = if_run.info.run_id
-    print(f"\nMLflow Run ID: {if_run_id}")
+try:
+    if_run_id = mlflow.active_run().info.run_id
+    mlflow.end_run()
+    print(f"MLflow Run ID: {if_run_id}")
+except:
+    if_run_id = "no_mlflow"
+    print("MLflow tracking unavailable — training completed without tracking.")
 
 # COMMAND ----------
 
@@ -329,87 +336,80 @@ numeric_features = [
     "ai_risk_score"
 ]
 
-with mlflow.start_run(run_name="kmeans_anomaly_v1") as km_run:
-    k = 8  # Number of clusters
-    safe_log_param("model_type", "KMeans_AnomalyDetection")
-    safe_log_param("k", k)
-    safe_log_param("features", str(numeric_features))
-    safe_log_param("max_iter", 50)
+try:
+    mlflow.start_run(run_name="kmeans_anomaly_v1")
+except: pass
 
-    # MLlib pipeline: Assemble → Scale → Cluster
-    assembler = VectorAssembler(inputCols=numeric_features, outputCol="raw_features", handleInvalid="skip")
-    spark_scaler = SparkScaler(inputCol="raw_features", outputCol="scaled_features", withMean=True, withStd=True)
-    kmeans = KMeans(k=k, featuresCol="scaled_features", predictionCol="cluster", maxIter=50, seed=42)
+k = 8
+safe_log_param("model_type", "KMeans_AnomalyDetection")
+safe_log_param("k", k)
 
-    pipeline = Pipeline(stages=[assembler, spark_scaler, kmeans])
-    model = pipeline.fit(featured_df)
-    predictions = model.transform(featured_df)
+# MLlib pipeline: Assemble → Scale → Cluster
+assembler = VectorAssembler(inputCols=numeric_features, outputCol="raw_features", handleInvalid="skip")
+spark_scaler = SparkScaler(inputCol="raw_features", outputCol="scaled_features", withMean=True, withStd=True)
+kmeans = KMeans(k=k, featuresCol="scaled_features", predictionCol="cluster", maxIter=50, seed=42)
 
-    # Evaluate clustering quality
-    evaluator = ClusteringEvaluator(featuresCol="scaled_features", predictionCol="cluster")
-    silhouette = evaluator.evaluate(predictions)
-    safe_log_metric("silhouette_score", silhouette)
-    print(f"Silhouette Score: {silhouette:.4f}")
+pipeline = Pipeline(stages=[assembler, spark_scaler, kmeans])
+model = pipeline.fit(featured_df)
+predictions = model.transform(featured_df)
 
-    # --- Compute distance to nearest cluster center ---
-    kmeans_model = model.stages[-1]
-    centers = kmeans_model.clusterCenters()
-    centers_broadcast = spark.sparkContext.broadcast(centers)
+# Evaluate clustering quality
+evaluator = ClusteringEvaluator(featuresCol="scaled_features", predictionCol="cluster")
+silhouette = evaluator.evaluate(predictions)
+safe_log_metric("silhouette_score", silhouette)
+print(f"Silhouette Score: {silhouette:.4f}")
 
-    # UDF to compute Euclidean distance to assigned cluster center
-    from pyspark.sql.types import DoubleType
+# --- Compute distance to nearest cluster center ---
+kmeans_model = model.stages[-1]
+centers = kmeans_model.clusterCenters()
+centers_broadcast = spark.sparkContext.broadcast(centers)
 
-    @F.udf(DoubleType())
-    def distance_to_center(features_array, cluster_id):
-        if features_array is None or cluster_id is None:
-            return 0.0
-        center = centers_broadcast.value[int(cluster_id)]
-        features = np.array(features_array)
-        return float(np.sqrt(np.sum((features - center) ** 2)))
+from pyspark.sql.types import DoubleType
 
-    # Convert vector to array, then compute distance
-    predictions_with_dist = (predictions
-        .withColumn("features_array", vector_to_array("scaled_features"))
-        .withColumn("distance_to_center", distance_to_center("features_array", "cluster"))
-    )
+@F.udf(DoubleType())
+def distance_to_center(features_array, cluster_id):
+    if features_array is None or cluster_id is None:
+        return 0.0
+    center = centers_broadcast.value[int(cluster_id)]
+    features = np.array(features_array)
+    return float(np.sqrt(np.sum((features - center) ** 2)))
 
-    # Compute distance statistics for anomaly threshold
-    dist_stats = predictions_with_dist.select(
-        F.mean("distance_to_center").alias("mean_dist"),
-        F.stddev("distance_to_center").alias("std_dist"),
-        F.expr("percentile_approx(distance_to_center, 0.95)").alias("p95_dist"),
-        F.expr("percentile_approx(distance_to_center, 0.99)").alias("p99_dist"),
-    ).collect()[0]
+predictions_with_dist = (predictions
+    .withColumn("features_array", vector_to_array("scaled_features"))
+    .withColumn("distance_to_center", distance_to_center("features_array", "cluster"))
+)
 
-    # Anomaly threshold: beyond 95th percentile
-    threshold = dist_stats["p95_dist"]
-    safe_log_param("anomaly_threshold_percentile", 95)
-    safe_log_metric("distance_mean", float(dist_stats["mean_dist"]))
-    safe_log_metric("distance_std", float(dist_stats["std_dist"]))
-    safe_log_metric("distance_p95", float(threshold))
+dist_stats = predictions_with_dist.select(
+    F.mean("distance_to_center").alias("mean_dist"),
+    F.stddev("distance_to_center").alias("std_dist"),
+    F.expr("percentile_approx(distance_to_center, 0.95)").alias("p95_dist"),
+    F.expr("percentile_approx(distance_to_center, 0.99)").alias("p99_dist"),
+).collect()[0]
 
-    # Normalize distances to [0, 1]
-    max_dist = predictions_with_dist.select(F.max("distance_to_center")).collect()[0][0]
-    predictions_with_dist = (predictions_with_dist
-        .withColumn("km_score", F.col("distance_to_center") / F.lit(max_dist + 1e-10))
-        .withColumn("km_anomaly", F.when(F.col("distance_to_center") > threshold, 1).otherwise(0))
-    )
+threshold = dist_stats["p95_dist"]
+safe_log_metric("distance_mean", float(dist_stats["mean_dist"]))
+safe_log_metric("distance_p95", float(threshold))
 
-    km_flagged = predictions_with_dist.filter(F.col("km_anomaly") == 1).count()
-    km_total = predictions_with_dist.count()
-    safe_log_metric("flagged_count", km_flagged)
-    safe_log_metric("flagged_rate", km_flagged / km_total)
+max_dist = predictions_with_dist.select(F.max("distance_to_center")).collect()[0][0]
+predictions_with_dist = (predictions_with_dist
+    .withColumn("km_score", F.col("distance_to_center") / F.lit(max_dist + 1e-10))
+    .withColumn("km_anomaly", F.when(F.col("distance_to_center") > threshold, 1).otherwise(0))
+)
 
-    print(f"KMeans flagged: {km_flagged:,} / {km_total:,} ({km_flagged/km_total*100:.2f}%)")
+km_flagged = predictions_with_dist.filter(F.col("km_anomaly") == 1).count()
+km_total = predictions_with_dist.count()
+safe_log_metric("flagged_count", km_flagged)
+safe_log_metric("flagged_rate", km_flagged / km_total)
 
-    # Log cluster distribution
-    display(predictions_with_dist.groupBy("cluster").count().orderBy("cluster"))
+print(f"KMeans flagged: {km_flagged:,} / {km_total:,} ({km_flagged/km_total*100:.2f}%)")
+display(predictions_with_dist.groupBy("cluster").count().orderBy("cluster"))
 
-    # Log MLlib model
-    # mlflow.spark.log_model(model, "kmeans_pipeline_model")
-
-    km_run_id = km_run.info.run_id
-    print(f"\nMLflow Run ID: {km_run_id}")
+try:
+    km_run_id = mlflow.active_run().info.run_id
+    mlflow.end_run()
+    print(f"MLflow Run ID: {km_run_id}")
+except:
+    km_run_id = "no_mlflow"
 
 # COMMAND ----------
 
@@ -421,76 +421,83 @@ with mlflow.start_run(run_name="kmeans_anomaly_v1") as km_run:
 
 # COMMAND ----------
 
-with mlflow.start_run(run_name="ensemble_fraud_v1") as ensemble_run:
-    # Weights for ensemble
-    w_if = 0.40   # Isolation Forest
-    w_km = 0.35   # KMeans distance
-    w_ai = 0.25   # AI risk label from DLT ai_query()
+try:
+    mlflow.start_run(run_name="ensemble_fraud_v1")
+except: pass
 
-    safe_log_param("model_type", "WeightedEnsemble")
-    safe_log_param("weight_isolation_forest", w_if)
-    safe_log_param("weight_kmeans", w_km)
-    safe_log_param("weight_ai_risk", w_ai)
-    safe_log_param("ensemble_threshold", 0.5)
+# Weights for ensemble
+w_if = 0.40   # Isolation Forest
+w_km = 0.35   # KMeans distance
+w_ai = 0.25   # AI risk label from DLT
 
-    # Join IF scores back to Spark DataFrame
-    if_scores_pdf = pdf[["transaction_id", "if_score", "if_anomaly"]].copy()
-    if_scores_sdf = spark.createDataFrame(if_scores_pdf)
+safe_log_param("model_type", "WeightedEnsemble")
+safe_log_param("weight_isolation_forest", w_if)
+safe_log_param("weight_kmeans", w_km)
+safe_log_param("weight_ai_risk", w_ai)
+safe_log_param("ensemble_threshold", 0.5)
 
-    # Merge all scores
-    ensemble_df = (predictions_with_dist
-        .join(if_scores_sdf, on="transaction_id", how="left")
-        .fillna(0.0, subset=["if_score", "km_score"])
-        .withColumn("ensemble_score",
-            F.lit(w_if) * F.coalesce(F.col("if_score"), F.lit(0.0)) +
-            F.lit(w_km) * F.col("km_score") +
-            F.lit(w_ai) * F.col("ai_risk_score")
-        )
-        .withColumn("ensemble_flag",
-            F.when(F.col("ensemble_score") > 0.5, True).otherwise(False)
-        )
-        .withColumn("final_risk_tier",
-            F.when(F.col("ensemble_score") > 0.8, "critical")
-            .when(F.col("ensemble_score") > 0.6, "high")
-            .when(F.col("ensemble_score") > 0.4, "medium")
-            .otherwise("low")
-        )
+# Join IF scores back to Spark DataFrame
+if_scores_pdf = pdf[["transaction_id", "if_score", "if_anomaly"]].copy()
+if_scores_sdf = spark.createDataFrame(if_scores_pdf)
+
+# Merge all scores
+ensemble_df = (predictions_with_dist
+    .join(if_scores_sdf, on="transaction_id", how="left")
+    .fillna(0.0, subset=["if_score", "km_score"])
+    .withColumn("ensemble_score",
+        F.lit(w_if) * F.coalesce(F.col("if_score"), F.lit(0.0)) +
+        F.lit(w_km) * F.col("km_score") +
+        F.lit(w_ai) * F.col("ai_risk_score")
     )
+    .withColumn("ensemble_flag",
+        F.when(F.col("ensemble_score") > 0.5, True).otherwise(False)
+    )
+    .withColumn("final_risk_tier",
+        F.when(F.col("ensemble_score") > 0.8, "critical")
+        .when(F.col("ensemble_score") > 0.6, "high")
+        .when(F.col("ensemble_score") > 0.4, "medium")
+        .otherwise("low")
+    )
+)
 
-    # Evaluate ensemble
-    if "is_fraud" in ensemble_df.columns:
-        eval_pdf = ensemble_df.select("is_fraud", "ensemble_flag", "ensemble_score").toPandas()
-        y_true = eval_pdf["is_fraud"].fillna(False).astype(int)
-        y_pred = eval_pdf["ensemble_flag"].astype(int)
-        scores = eval_pdf["ensemble_score"]
+# Evaluate ensemble
+if "is_fraud" in ensemble_df.columns:
+    eval_pdf = ensemble_df.select("is_fraud", "ensemble_flag", "ensemble_score").toPandas()
+    y_true = eval_pdf["is_fraud"].fillna(False).astype(int)
+    y_pred = eval_pdf["ensemble_flag"].astype(int)
+    scores = eval_pdf["ensemble_score"]
 
-        precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred, average="binary", zero_division=0)
-        try:
-            auc = roc_auc_score(y_true, scores)
-        except:
-            auc = 0.0
+    precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred, average="binary", zero_division=0)
+    try:
+        auc = roc_auc_score(y_true, scores)
+    except:
+        auc = 0.0
 
-        safe_log_metric("ensemble_precision", precision)
-        safe_log_metric("ensemble_recall", recall)
-        safe_log_metric("ensemble_f1", f1)
-        safe_log_metric("ensemble_auc_roc", auc)
+    safe_log_metric("ensemble_precision", precision)
+    safe_log_metric("ensemble_recall", recall)
+    safe_log_metric("ensemble_f1", f1)
+    safe_log_metric("ensemble_auc_roc", auc)
 
-        print(f"Ensemble Results:")
-        print(f"  Precision: {precision:.4f}")
-        print(f"  Recall:    {recall:.4f}")
-        print(f"  F1 Score:  {f1:.4f}")
-        print(f"  AUC-ROC:   {auc:.4f}")
+    print(f"Ensemble Results:")
+    print(f"  Precision: {precision:.4f}")
+    print(f"  Recall:    {recall:.4f}")
+    print(f"  F1 Score:  {f1:.4f}")
+    print(f"  AUC-ROC:   {auc:.4f}")
 
-    total_flagged = ensemble_df.filter(F.col("ensemble_flag") == True).count()
-    total = ensemble_df.count()
-    safe_log_metric("total_flagged", total_flagged)
-    safe_log_metric("total_transactions", total)
-    safe_log_metric("overall_flag_rate", total_flagged / total)
+total_flagged = ensemble_df.filter(F.col("ensemble_flag") == True).count()
+total = ensemble_df.count()
+safe_log_metric("total_flagged", total_flagged)
+safe_log_metric("total_transactions", total)
+safe_log_metric("overall_flag_rate", total_flagged / total)
 
-    print(f"\nEnsemble flagged: {total_flagged:,} / {total:,} ({total_flagged/total*100:.2f}%)")
-    display(ensemble_df.groupBy("final_risk_tier").count().orderBy("final_risk_tier"))
+print(f"\nEnsemble flagged: {total_flagged:,} / {total:,} ({total_flagged/total*100:.2f}%)")
+display(ensemble_df.groupBy("final_risk_tier").count().orderBy("final_risk_tier"))
 
-    ensemble_run_id = ensemble_run.info.run_id
+try:
+    ensemble_run_id = mlflow.active_run().info.run_id
+    mlflow.end_run()
+except:
+    ensemble_run_id = "no_mlflow"
 
 # COMMAND ----------
 
