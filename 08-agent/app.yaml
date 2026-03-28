@@ -17,6 +17,8 @@ env:
     value: "databricks-meta-llama-3-1-70b-instruct"
   - name: GENIE_SPACE_ID
     valueFrom: genie-space
+  - name: WAREHOUSE_ID
+    valueFrom: sql-warehouse
   - name: API_PROXY
     value: "http://localhost:8000/invocations"
   - name: CHAT_APP_PORT

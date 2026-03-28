@@ -11,6 +11,9 @@ variables:
   genie_space_id:
     description: "Genie Space ID (from 07-deploy-genie.py output)"
     default: ""
+  warehouse_id:
+    description: "SQL Warehouse ID for statement execution"
+    default: ""
 
 resources:
   experiments:
@@ -23,7 +26,7 @@ resources:
   apps:
     digital-artha:
       name: digital-artha
-      description: "Digital-Artha: AI-powered financial intelligence for India"
+      description: "Digital-Artha: AI-powered financial intelligence for India — fraud detection, RBI regulations, loan eligibility"
       source_code_path: .
       config:
         command:
@@ -43,6 +46,8 @@ resources:
             value: "databricks-meta-llama-3-1-70b-instruct"
           - name: GENIE_SPACE_ID
             value: ${var.genie_space_id}
+          - name: WAREHOUSE_ID
+            value: ${var.warehouse_id}
       permissions:
         - level: CAN_MANAGE
           user_name: ${workspace.current_user.userName}
@@ -57,6 +62,9 @@ resources:
         - name: genie-space
           genie_space_id: ${var.genie_space_id}
           permission: CAN_RUN
+        - name: sql-warehouse
+          sql_warehouse_id: ${var.warehouse_id}
+          permission: CAN_USE
 
 targets:
   dev:
