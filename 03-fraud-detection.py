@@ -16,7 +16,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install scikit-learn --quiet
+# scikit-learn is pre-installed on Databricks — no pip install needed
 
 # COMMAND ----------
 
