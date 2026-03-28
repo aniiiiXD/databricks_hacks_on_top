@@ -30,6 +30,9 @@ print(f"Catalog: {catalog}")
 print(f"Schema: {schema}")
 print(f"Source: {source_path}")
 
+# Clean stale checkpoints from failed runs (uncomment if re-running)
+# dbutils.fs.rm(checkpoint_base, recurse=True)
+
 # COMMAND ----------
 
 # MAGIC %md
@@ -134,16 +137,10 @@ print("UPI Transactions ingestion started...")
 
 # COMMAND ----------
 
-# RBI Circulars — may be flat JSON or nested
-circular_stream = (spark.readStream
-    .format("cloudFiles")
-    .option("cloudFiles.format", "json")
-    .option("cloudFiles.inferColumnTypes", "true")
-    .option("cloudFiles.schemaLocation", f"{checkpoint_base}/circular_schema")
-    .option("pathGlobFilter", "*circular*")
-    .load(source_path))
+# RBI Circulars — direct read (small file, 80 rows, no need for Auto Loader)
+circulars_df = spark.read.json(f"{source_path}rbi_circulars.json")
 
-bronze_circulars = (circular_stream
+bronze_circulars = (circulars_df
     .select(
         F.col("circular_id").cast("string"),
         F.col("title").cast("string"),
@@ -160,16 +157,10 @@ bronze_circulars = (circular_stream
         F.col("url").cast("string"),
         F.length(F.col("full_text")).alias("text_length"),
         F.current_timestamp().alias("ingested_at"),
-        F.input_file_name().alias("source_file"),
     ))
 
-(bronze_circulars.writeStream
-    .option("checkpointLocation", f"{checkpoint_base}/bronze_circulars")
-    .option("mergeSchema", "true")
-    .trigger(availableNow=True)
-    .toTable(f"{catalog}.{schema}.bronze_circulars"))
-
-print("RBI Circulars ingestion started...")
+bronze_circulars.write.mode("overwrite").saveAsTable(f"{catalog}.{schema}.bronze_circulars")
+print(f"RBI Circulars ingested: {bronze_circulars.count()} rows")
 
 # COMMAND ----------
 
@@ -178,34 +169,8 @@ print("RBI Circulars ingestion started...")
 
 # COMMAND ----------
 
-# Gov Schemes — likely CSV or JSON, use direct read (smaller dataset)
-# Try JSON first, fall back to CSV
-try:
-    schemes_df = spark.read.json(f"{source_path}*scheme*")
-    print("Loaded schemes from JSON")
-except:
-    try:
-        schemes_df = spark.read.option("header", "true").option("inferSchema", "true").csv(f"{source_path}*scheme*")
-        print("Loaded schemes from CSV")
-    except:
-        print("WARNING: No scheme data found. Create an empty table for now.")
-        schemes_schema = StructType([
-            StructField("scheme_id", StringType()),
-            StructField("scheme_name", StringType()),
-            StructField("ministry", StringType()),
-            StructField("description", StringType()),
-            StructField("eligibility_criteria", StringType()),
-            StructField("benefits", StringType()),
-            StructField("target_group", StringType()),
-            StructField("income_limit", DoubleType()),
-            StructField("age_min", IntegerType()),
-            StructField("age_max", IntegerType()),
-            StructField("gender", StringType()),
-            StructField("occupation", StringType()),
-            StructField("state", StringType()),
-            StructField("url", StringType()),
-        ])
-        schemes_df = spark.createDataFrame([], schemes_schema)
+# Gov Schemes — direct read (small file, 170 rows)
+schemes_df = spark.read.json(f"{source_path}gov_schemes.json")
 
 bronze_schemes = (schemes_df
     .select(
