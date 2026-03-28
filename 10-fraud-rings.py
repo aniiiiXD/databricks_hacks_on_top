@@ -47,7 +47,14 @@ print(f"Source: {catalog}.{schema}.gold_transactions_enriched")
 # COMMAND ----------
 
 # Edge list: sender → receiver with aggregated metrics
-# Only include edges with 2+ transactions OR at least 1 fraud — reduces noise
+# Check what columns exist in the enriched table
+enriched_cols = [c.name for c in spark.table(f"{catalog}.{schema}.gold_transactions_enriched").schema]
+print(f"Enriched table columns: {enriched_cols}")
+
+# Build query based on available columns
+score_col = "CAST(ensemble_score AS DOUBLE)" if "ensemble_score" in enriched_cols else "0.0"
+flag_col = "ensemble_flag = true" if "ensemble_flag" in enriched_cols else "is_fraud = true"
+
 edges_df = spark.sql(f"""
 SELECT
     sender_id AS src,
@@ -55,15 +62,15 @@ SELECT
     COUNT(*) AS txn_count,
     ROUND(SUM(amount), 2) AS total_amount,
     ROUND(AVG(amount), 2) AS avg_amount,
-    ROUND(AVG(CAST(ensemble_score AS DOUBLE)), 4) AS avg_risk_score,
-    SUM(CASE WHEN ensemble_flag = true THEN 1 ELSE 0 END) AS fraud_txn_count,
+    ROUND(AVG({score_col}), 4) AS avg_risk_score,
+    SUM(CASE WHEN {flag_col} THEN 1 ELSE 0 END) AS fraud_txn_count,
     MIN(transaction_time) AS first_txn,
     MAX(transaction_time) AS last_txn
 FROM {catalog}.{schema}.gold_transactions_enriched
 WHERE sender_id IS NOT NULL AND receiver_id IS NOT NULL
   AND sender_id != receiver_id
 GROUP BY sender_id, receiver_id
-HAVING COUNT(*) >= 2 OR SUM(CASE WHEN ensemble_flag = true THEN 1 ELSE 0 END) >= 1
+HAVING COUNT(*) >= 2 OR SUM(CASE WHEN {flag_col} THEN 1 ELSE 0 END) >= 1
 """)
 
 # Node list: all unique accounts
@@ -150,12 +157,14 @@ for ring_id, members in enumerate(rings):
 
 rings_pdf = pd.DataFrame(ring_data)
 
-# Classify ring severity
-rings_pdf["severity"] = pd.cut(
-    rings_pdf["avg_risk_score"],
-    bins=[-0.01, 0.2, 0.4, 0.6, 1.01],
-    labels=["low", "medium", "high", "critical"]
-)
+if len(rings_pdf) > 0 and "avg_risk_score" in rings_pdf.columns:
+    rings_pdf["severity"] = pd.cut(
+        rings_pdf["avg_risk_score"].fillna(0),
+        bins=[-0.01, 0.2, 0.4, 0.6, 1.01],
+        labels=["low", "medium", "high", "critical"]
+    )
+else:
+    rings_pdf["severity"] = "unknown"
 
 print(f"\nFraud Ring Summary:")
 print(f"  Total rings: {len(rings_pdf)}")
@@ -216,6 +225,7 @@ print(f"Hub accounts (top 5% by connections): {len(hubs):,}")
 
 # COMMAND ----------
 
+# Reuse the detected columns
 sender_profiles = spark.sql(f"""
 SELECT
     sender_id,
@@ -228,9 +238,9 @@ SELECT
     COUNT(DISTINCT receiver_id) AS unique_receivers,
     COUNT(DISTINCT category) AS unique_categories,
     COUNT(DISTINCT location) AS unique_locations,
-    COUNT(DISTINCT CASE WHEN ensemble_flag = true THEN transaction_id END) AS fraud_count,
-    ROUND(COUNT(DISTINCT CASE WHEN ensemble_flag = true THEN transaction_id END) * 100.0 / NULLIF(COUNT(DISTINCT transaction_id), 0), 2) AS personal_fraud_rate,
-    ROUND(AVG(CAST(ensemble_score AS DOUBLE)), 4) AS avg_risk_score,
+    COUNT(DISTINCT CASE WHEN {flag_col} THEN transaction_id END) AS fraud_count,
+    ROUND(COUNT(DISTINCT CASE WHEN {flag_col} THEN transaction_id END) * 100.0 / NULLIF(COUNT(DISTINCT transaction_id), 0), 2) AS personal_fraud_rate,
+    ROUND(AVG({score_col}), 4) AS avg_risk_score,
     MIN(transaction_time) AS first_transaction,
     MAX(transaction_time) AS last_transaction,
     DATEDIFF(MAX(transaction_time), MIN(transaction_time)) AS account_age_days,
@@ -285,9 +295,9 @@ SELECT
     COUNT(DISTINCT sender_id) AS unique_senders,
     ROUND(SUM(amount) / GREATEST(COUNT(*) / COUNT(DISTINCT transaction_id), 1), 2) AS total_volume,
     ROUND(AVG(amount), 2) AS avg_transaction,
-    COUNT(DISTINCT CASE WHEN ensemble_flag = true THEN transaction_id END) AS fraud_count,
-    ROUND(COUNT(DISTINCT CASE WHEN ensemble_flag = true THEN transaction_id END) * 100.0 / NULLIF(COUNT(DISTINCT transaction_id), 0), 2) AS fraud_rate,
-    ROUND(AVG(CAST(ensemble_score AS DOUBLE)), 4) AS avg_risk_score,
+    COUNT(DISTINCT CASE WHEN {flag_col} THEN transaction_id END) AS fraud_count,
+    ROUND(COUNT(DISTINCT CASE WHEN {flag_col} THEN transaction_id END) * 100.0 / NULLIF(COUNT(DISTINCT transaction_id), 0), 2) AS fraud_rate,
+    ROUND(AVG({score_col}), 4) AS avg_risk_score,
     ROUND(AVG(CASE WHEN hour_of_day BETWEEN 0 AND 5 THEN 1 ELSE 0 END) * 100, 2) AS late_night_pct,
     ROUND(AVG(CASE WHEN hour_of_day BETWEEN 18 AND 23 THEN 1 ELSE 0 END) * 100, 2) AS evening_pct
 FROM {catalog}.{schema}.gold_transactions_enriched
