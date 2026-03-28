@@ -85,7 +85,13 @@ print(f"Graph: {nodes_df.count():,} nodes, {edges_df.count():,} edges")
 import networkx as nx
 
 # Collect to driver (OK for hackathon-sized data)
-edges_pdf = edges_df.select("src", "dst", "txn_count", "total_amount", "avg_risk_score", "fraud_txn_count").toPandas()
+# Collect edge data — select only columns we know exist
+edges_cols = [c for c in edges_df.columns if c in ("src", "dst", "txn_count", "total_amount", "avg_risk_score", "fraud_txn_count")]
+print(f"Edge columns available: {edges_cols}")
+edges_pdf = edges_df.select(*edges_cols).toPandas()
+# Ensure avg_risk_score exists, default to 0 if missing
+if "avg_risk_score" not in edges_pdf.columns:
+    edges_pdf["avg_risk_score"] = 0.0
 
 # Build directed graph
 G = nx.DiGraph()
