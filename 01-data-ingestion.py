@@ -151,11 +151,11 @@ bronze_circulars = (circulars_df
         F.col("circular_id").cast("string"),
         F.col("title").cast("string"),
         F.col("date").cast("string"),
-        # Date format from scraper: "March 27, 2026" or "September 04, 2023"
+        # Date format from scraper: "March 27, 2026" or empty string
         F.coalesce(
-            F.to_date(F.col("date"), "MMMM d, yyyy"),
-            F.to_date(F.col("date"), "MMMM dd, yyyy"),
-            F.to_date(F.col("date"), "yyyy-MM-dd"),
+            F.try_to_timestamp(F.col("date"), F.lit("MMMM d, yyyy")).cast("date"),
+            F.try_to_timestamp(F.col("date"), F.lit("MMMM dd, yyyy")).cast("date"),
+            F.try_to_timestamp(F.col("date"), F.lit("yyyy-MM-dd")).cast("date"),
         ).alias("circular_date"),
         F.col("department").cast("string"),
         F.col("category").cast("string").alias("circular_category"),
