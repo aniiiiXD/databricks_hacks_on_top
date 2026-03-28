@@ -27,6 +27,9 @@ dev = [
 start-app = "agent_server.start_server:main"
 quickstart = "scripts.quickstart:main"
 
+[tool.hatch.build.targets.wheel]
+packages = ["agent_server", "scripts"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
