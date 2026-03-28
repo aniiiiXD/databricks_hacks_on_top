@@ -139,7 +139,12 @@ print("UPI Transactions ingestion started...")
 # COMMAND ----------
 
 # RBI Circulars — direct read (small file, 80 rows, no need for Auto Loader)
+# Try JSON Lines first (one object per line), fall back to multiLine JSON array
 circulars_df = spark.read.json(f"{source_path}rbi_circulars.json")
+# If we only get _corrupt_record, the file is a JSON array — re-read with multiLine
+if "_corrupt_record" in circulars_df.columns and len(circulars_df.columns) <= 2:
+    print("JSON Lines parse failed, trying multiLine JSON array...")
+    circulars_df = spark.read.option("multiLine", "true").json(f"{source_path}rbi_circulars.json")
 
 bronze_circulars = (circulars_df
     .select(
@@ -172,6 +177,9 @@ print(f"RBI Circulars ingested: {bronze_circulars.count()} rows")
 
 # Gov Schemes — direct read (small file, 170 rows)
 schemes_df = spark.read.json(f"{source_path}gov_schemes.json")
+if "_corrupt_record" in schemes_df.columns and len(schemes_df.columns) <= 2:
+    print("JSON Lines parse failed, trying multiLine JSON array...")
+    schemes_df = spark.read.option("multiLine", "true").json(f"{source_path}gov_schemes.json")
 
 bronze_schemes = (schemes_df
     .select(
