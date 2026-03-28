@@ -3,9 +3,9 @@
 # MAGIC # Digital-Artha: Data Ingestion Pipeline
 # MAGIC
 # MAGIC Ingests 3 data sources into Bronze layer via Auto Loader:
-# MAGIC 1. **Synthetic UPI Transactions** — streaming JSON ingestion
-# MAGIC 2. **RBI Circulars** — regulatory text documents
-# MAGIC 3. **Government Schemes** — financial inclusion programs
+# MAGIC 1. **UPI Transactions** — Kaggle CSV (250K real transactions with fraud labels)
+# MAGIC 2. **RBI Circulars** — scraped from rbi.org.in (JSON Lines)
+# MAGIC 3. **Government Schemes** — from myscheme.gov.in via OpenNyAI (JSON Lines)
 # MAGIC
 # MAGIC **Pattern:** Auto Loader (`cloudFiles`) with schema inference, exactly-once semantics,
 # MAGIC and `trigger(availableNow=True)` for batch-style streaming.
@@ -57,52 +57,62 @@ print(f"Workspace ready: {catalog}.{schema}")
 from pyspark.sql import functions as F
 from pyspark.sql.types import *
 
-# --- UPI Transactions ---
+# --- UPI Transactions (Kaggle CSV: upi_transactions_2024.csv) ---
+# Column mapping from Kaggle schema:
+#   "transaction id" -> transaction_id
+#   "timestamp" -> transaction_time
+#   "transaction type" -> transaction_type (P2P, P2M, Bill Payment, Recharge)
+#   "merchant_category" -> category
+#   "amount (INR)" -> amount
+#   "transaction_status" -> transaction_status (SUCCESS/FAILED)
+#   "sender_age_group" / "receiver_age_group" -> age groups
+#   "sender_state" -> location
+#   "sender_bank" / "receiver_bank" -> banks
+#   "device_type" -> device_type (Android/iOS/Web)
+#   "network_type" -> network_type (4G/5G/WiFi)
+#   "fraud_flag" -> is_fraud (0/1)
+#   "hour_of_day", "day_of_week", "is_weekend" -> pre-computed
+
 txn_stream = (spark.readStream
     .format("cloudFiles")
-    .option("cloudFiles.format", "json")
+    .option("cloudFiles.format", "csv")
     .option("cloudFiles.inferColumnTypes", "true")
+    .option("header", "true")
     .option("cloudFiles.schemaLocation", f"{checkpoint_base}/txn_schema")
     .option("pathGlobFilter", "*transaction*")
     .load(source_path))
 
-# Flatten and derive features during ingestion
+# Map Kaggle columns to our schema
 bronze_txns = (txn_stream
     .select(
-        F.col("txn_id").cast("string").alias("transaction_id"),
-        F.col("amount").cast("double"),
-        F.coalesce(
-            F.to_timestamp("timestamp"),
-            F.from_unixtime(F.col("timestamp").cast("long"))
-        ).alias("transaction_time"),
-        F.col("sender_id").cast("string"),
-        F.col("receiver_id").cast("string"),
-        F.col("sender_name").cast("string"),
-        F.col("receiver_name").cast("string"),
-        F.col("category").cast("string"),
-        F.col("merchant_id").cast("string"),
-        F.col("merchant_name").cast("string"),
-        F.col("payment_mode").cast("string"),
+        F.col("`transaction id`").cast("string").alias("transaction_id"),
+        F.col("`amount (INR)`").cast("double").alias("amount"),
+        F.to_timestamp("timestamp").alias("transaction_time"),
+        # Generate sender/receiver IDs from the data (Kaggle doesn't have UPI IDs)
+        F.concat(F.lit("sender_"), F.abs(F.hash(F.col("`transaction id`"))) % 5000, F.lit("@upi")).alias("sender_id"),
+        F.concat(F.lit("recv_"), F.abs(F.hash(F.reverse(F.col("`transaction id`")))) % 3000, F.lit("@upi")).alias("receiver_id"),
+        F.lit("").alias("sender_name"),
+        F.lit("").alias("receiver_name"),
+        F.col("merchant_category").cast("string").alias("category"),
+        F.concat(F.lit("MERCH_"), F.abs(F.hash("merchant_category")) % 500).cast("string").alias("merchant_id"),
+        F.col("merchant_category").cast("string").alias("merchant_name"),
+        F.col("`transaction type`").cast("string").alias("payment_mode"),
         F.col("device_type").cast("string"),
-        F.col("location").cast("string"),
-        F.col("is_fraud").cast("boolean"),
-        # Derived time features
-        F.hour(F.coalesce(
-            F.to_timestamp("timestamp"),
-            F.from_unixtime(F.col("timestamp").cast("long"))
-        )).alias("hour_of_day"),
-        F.dayofweek(F.coalesce(
-            F.to_timestamp("timestamp"),
-            F.from_unixtime(F.col("timestamp").cast("long"))
-        )).alias("day_of_week"),
-        F.dayofmonth(F.coalesce(
-            F.to_timestamp("timestamp"),
-            F.from_unixtime(F.col("timestamp").cast("long"))
-        )).alias("day_of_month"),
-        F.month(F.coalesce(
-            F.to_timestamp("timestamp"),
-            F.from_unixtime(F.col("timestamp").cast("long"))
-        )).alias("month"),
+        F.col("sender_state").cast("string").alias("location"),
+        F.col("fraud_flag").cast("boolean").alias("is_fraud"),
+        F.col("sender_bank").cast("string"),
+        F.col("receiver_bank").cast("string"),
+        F.col("sender_age_group").cast("string"),
+        F.col("receiver_age_group").cast("string"),
+        F.col("network_type").cast("string"),
+        F.col("`transaction_status`").cast("string").alias("transaction_status"),
+        # Time features (pre-computed in Kaggle dataset)
+        F.col("hour_of_day").cast("integer"),
+        F.col("day_of_week").cast("string"),
+        F.col("is_weekend").cast("boolean"),
+        # Additional derived features
+        F.dayofmonth(F.to_timestamp("timestamp")).alias("day_of_month"),
+        F.month(F.to_timestamp("timestamp")).alias("month"),
         # Ingestion metadata
         F.current_timestamp().alias("ingested_at"),
         F.input_file_name().alias("source_file"),
@@ -138,7 +148,12 @@ bronze_circulars = (circular_stream
         F.col("circular_id").cast("string"),
         F.col("title").cast("string"),
         F.col("date").cast("string"),
-        F.to_date(F.col("date"), "yyyy-MM-dd").alias("circular_date"),
+        # Date format from scraper: "March 27, 2026" or "September 04, 2023"
+        F.coalesce(
+            F.to_date(F.col("date"), "MMMM d, yyyy"),
+            F.to_date(F.col("date"), "MMMM dd, yyyy"),
+            F.to_date(F.col("date"), "yyyy-MM-dd"),
+        ).alias("circular_date"),
         F.col("department").cast("string"),
         F.col("category").cast("string").alias("circular_category"),
         F.col("full_text").cast("string"),
@@ -240,7 +255,7 @@ governance_sql = [
     f"ALTER TABLE {catalog}.{schema}.bronze_circulars SET TBLPROPERTIES (delta.enableChangeDataFeed = true)",
 
     # Table comments
-    f"COMMENT ON TABLE {catalog}.{schema}.bronze_transactions IS 'Raw synthetic UPI transaction data ingested via Auto Loader. Source: hackathon synthetic dataset.'",
+    f"COMMENT ON TABLE {catalog}.{schema}.bronze_transactions IS 'UPI transaction data from Kaggle (250K rows, 0.2%% fraud rate). Source: kaggle.com/datasets/skullagos5246/upi-transactions-2024-dataset'",
     f"COMMENT ON TABLE {catalog}.{schema}.bronze_circulars IS 'Raw RBI circular texts ingested via Auto Loader. Source: rbi.org.in public circulars.'",
     f"COMMENT ON TABLE {catalog}.{schema}.bronze_schemes IS 'Raw government financial inclusion scheme data. Source: data.gov.in / myscheme.gov.in.'",
 ]
@@ -257,7 +272,7 @@ txn_col_comments = {
     "payment_mode": "UPI payment mode (QR, intent, collect, etc.)",
     "device_type": "Device type used for transaction (mobile, web, etc.)",
     "location": "City or region where the transaction occurred",
-    "is_fraud": "Ground truth fraud label from synthetic dataset (for model evaluation)",
+    "is_fraud": "Ground truth fraud label from Kaggle dataset (for model evaluation)",
     "hour_of_day": "Hour of transaction (0-23), derived from timestamp",
     "day_of_week": "Day of week (1=Sunday, 7=Saturday), derived from timestamp",
     "ingested_at": "Timestamp when the record was ingested into Bronze layer",
