@@ -1,0 +1,34 @@
+# Starter kit (reference only, not our code)
+bharatbricksiitb/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Databricks
+.databricks/
+*.checkpoint/
+
+# Data (too large for git — upload to Volumes directly)
+raw_data/*.json
+raw_data/*.csv
+
+# Claude
+.claude/

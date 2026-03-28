@@ -1,0 +1,65 @@
+bundle:
+  name: digital-artha-agent
+
+variables:
+  catalog:
+    description: "Unity Catalog name"
+    default: "digital_artha"
+  schema:
+    description: "Schema name"
+    default: "main"
+  genie_space_id:
+    description: "Genie Space ID (from 07-deploy-genie.py output)"
+    default: ""
+
+resources:
+  experiments:
+    digital_artha_agent:
+      name: "/Users/${workspace.current_user.userName}/digital-artha-agent"
+      permissions:
+        - level: CAN_MANAGE
+          user_name: ${workspace.current_user.userName}
+
+  apps:
+    digital-artha:
+      name: digital-artha
+      description: "Digital-Artha: AI-powered financial intelligence for India"
+      source_code_path: .
+      config:
+        command:
+          - uv
+          - run
+          - start-app
+        env:
+          - name: MLFLOW_TRACKING_URI
+            value: "databricks"
+          - name: MLFLOW_EXPERIMENT_ID
+            valueFrom: experiment
+          - name: CATALOG
+            value: ${var.catalog}
+          - name: SCHEMA
+            value: ${var.schema}
+          - name: LLM_ENDPOINT
+            value: "databricks-meta-llama-3-1-70b-instruct"
+          - name: GENIE_SPACE_ID
+            value: ${var.genie_space_id}
+      permissions:
+        - level: CAN_MANAGE
+          user_name: ${workspace.current_user.userName}
+      resources:
+        - name: experiment
+          experiment:
+            id: ${resources.experiments.digital_artha_agent.id}
+            permission: CAN_MANAGE
+        - name: vector-search-index
+          sql_name: ${var.catalog}.${var.schema}.circular_chunks_vs_index
+          permission: SELECT
+        - name: genie-space
+          genie_space_id: ${var.genie_space_id}
+          permission: CAN_RUN
+
+targets:
+  dev:
+    default: true
+    workspace:
+      host: ${workspace.host}

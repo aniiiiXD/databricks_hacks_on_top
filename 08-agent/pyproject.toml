@@ -1,0 +1,32 @@
+[project]
+name = "digital-artha-agent"
+version = "0.1.0"
+description = "Digital-Artha: AI-powered financial intelligence agent for India"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "databricks-langchain[memory]>=0.4.0",
+    "databricks-agents>=0.15.0",
+    "mlflow>=3.10.0",
+    "langgraph>=0.2.0",
+    "langchain>=0.3.0",
+    "langchain-mcp-adapters>=0.1.0",
+    "python-dotenv>=1.0.0",
+    "databricks-sdk>=0.30.0",
+    "nest-asyncio>=1.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[project.scripts]
+start-app = "agent_server.start_server:main"
+quickstart = "scripts.quickstart:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
