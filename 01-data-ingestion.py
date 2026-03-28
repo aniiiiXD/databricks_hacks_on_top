@@ -30,8 +30,9 @@ print(f"Catalog: {catalog}")
 print(f"Schema: {schema}")
 print(f"Source: {source_path}")
 
-# Clean stale checkpoints from failed runs (uncomment if re-running)
-# dbutils.fs.rm(checkpoint_base, recurse=True)
+# Clean stale checkpoints from failed runs — RUN THIS if you hit schema errors
+dbutils.fs.rm(checkpoint_base, recurse=True)
+print("Checkpoints cleared.")
 
 # COMMAND ----------
 
@@ -118,7 +119,7 @@ bronze_txns = (txn_stream
         F.month(F.to_timestamp("timestamp")).alias("month"),
         # Ingestion metadata
         F.current_timestamp().alias("ingested_at"),
-        F.input_file_name().alias("source_file"),
+        F.col("_metadata.file_path").alias("source_file"),
     ))
 
 # Write with exactly-once semantics
