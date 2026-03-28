@@ -293,10 +293,11 @@ w_if = 0.45
 w_km = 0.30
 w_ai = 0.25
 
+pdf["ai_risk_score"] = pdf["ai_risk_score"].astype(float).fillna(0)
 pdf["ensemble_score"] = (
     w_if * pdf["if_score"] +
     w_km * pdf["km_score"] +
-    w_ai * pdf["ai_risk_score"].fillna(0)
+    w_ai * pdf["ai_risk_score"]
 )
 
 pdf["ensemble_flag"] = pdf["ensemble_score"] > 0.5
