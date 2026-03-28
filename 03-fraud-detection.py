@@ -56,13 +56,14 @@ featured_df = spark.sql(f"""
 WITH sender_stats AS (
     SELECT
         sender_id,
-        AVG(amount) AS sender_avg_amount,
-        COALESCE(STDDEV(amount), 0) AS sender_std_amount,
-        MAX(amount) AS sender_max_amount,
-        COUNT(*) AS sender_txn_count
+        CAST(AVG(amount) AS DOUBLE) AS sender_avg_amount,
+        CAST(COALESCE(STDDEV(amount), 0) AS DOUBLE) AS sender_std_amount,
+        CAST(MAX(amount) AS DOUBLE) AS sender_max_amount,
+        CAST(COUNT(*) AS DOUBLE) AS sender_txn_count
     FROM {catalog}.{schema}.gold_transactions
     GROUP BY sender_id
 )
+-- deduplicate: one row per transaction_id
 SELECT
     t.*,
     CAST(s.sender_avg_amount AS DOUBLE) AS sender_avg_amount,

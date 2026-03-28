@@ -47,6 +47,7 @@ print(f"Source: {catalog}.{schema}.gold_transactions_enriched")
 # COMMAND ----------
 
 # Edge list: sender → receiver with aggregated metrics
+# Only include edges with 2+ transactions OR at least 1 fraud — reduces noise
 edges_df = spark.sql(f"""
 SELECT
     sender_id AS src,
@@ -59,8 +60,10 @@ SELECT
     MIN(transaction_time) AS first_txn,
     MAX(transaction_time) AS last_txn
 FROM {catalog}.{schema}.gold_transactions_enriched
+WHERE sender_id IS NOT NULL AND receiver_id IS NOT NULL
+  AND sender_id != receiver_id
 GROUP BY sender_id, receiver_id
-HAVING COUNT(*) >= 1
+HAVING COUNT(*) >= 2 OR SUM(CASE WHEN ensemble_flag = true THEN 1 ELSE 0 END) >= 1
 """)
 
 # Node list: all unique accounts
@@ -99,9 +102,14 @@ print(f"NetworkX graph: {G.number_of_nodes():,} nodes, {G.number_of_edges():,} e
 components = list(nx.connected_components(G.to_undirected()))
 print(f"Total connected components: {len(components):,}")
 
-# Filter to components with 3+ nodes (potential rings)
-rings = [c for c in components if len(c) >= 3]
-print(f"Components with 3+ nodes (potential rings): {len(rings)}")
+# Filter: rings are components with 3-500 nodes (exclude the giant component)
+max_ring_size = 500  # Giant components are just "everyone connected" — not useful
+rings = [c for c in components if 3 <= len(c) <= max_ring_size]
+# Also include the giant component stats separately
+giant = [c for c in components if len(c) > max_ring_size]
+print(f"Components with 3-{max_ring_size} nodes (fraud rings): {len(rings)}")
+if giant:
+    print(f"Giant component excluded: {len(giant[0]):,} nodes (too connected to be a ring)")
 
 # COMMAND ----------
 
@@ -205,7 +213,7 @@ print(f"Hub accounts (top 5% by connections): {len(hubs):,}")
 sender_profiles = spark.sql(f"""
 SELECT
     sender_id,
-    COUNT(*) AS total_transactions,
+    COUNT(DISTINCT transaction_id) AS total_transactions,
     ROUND(SUM(amount), 2) AS total_amount_sent,
     ROUND(AVG(amount), 2) AS avg_amount,
     ROUND(STDDEV(amount), 2) AS std_amount,
@@ -214,8 +222,8 @@ SELECT
     COUNT(DISTINCT receiver_id) AS unique_receivers,
     COUNT(DISTINCT category) AS unique_categories,
     COUNT(DISTINCT location) AS unique_locations,
-    SUM(CASE WHEN ensemble_flag = true THEN 1 ELSE 0 END) AS fraud_count,
-    ROUND(SUM(CASE WHEN ensemble_flag = true THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS personal_fraud_rate,
+    COUNT(DISTINCT CASE WHEN ensemble_flag = true THEN transaction_id END) AS fraud_count,
+    ROUND(COUNT(DISTINCT CASE WHEN ensemble_flag = true THEN transaction_id END) * 100.0 / NULLIF(COUNT(DISTINCT transaction_id), 0), 2) AS personal_fraud_rate,
     ROUND(AVG(CAST(ensemble_score AS DOUBLE)), 4) AS avg_risk_score,
     MIN(transaction_time) AS first_transaction,
     MAX(transaction_time) AS last_transaction,
@@ -263,17 +271,17 @@ print(f"Written: {catalog}.{schema}.platinum_sender_profiles ({sender_profiles_f
 
 # COMMAND ----------
 
+# Use DISTINCT transaction_id to avoid counting duplicates from joins
 merchant_profiles = spark.sql(f"""
 SELECT
     category AS merchant_category,
-    COUNT(*) AS total_transactions,
+    COUNT(DISTINCT transaction_id) AS total_transactions,
     COUNT(DISTINCT sender_id) AS unique_senders,
-    ROUND(SUM(amount), 2) AS total_volume,
+    ROUND(SUM(amount) / GREATEST(COUNT(*) / COUNT(DISTINCT transaction_id), 1), 2) AS total_volume,
     ROUND(AVG(amount), 2) AS avg_transaction,
-    SUM(CASE WHEN ensemble_flag = true THEN 1 ELSE 0 END) AS fraud_count,
-    ROUND(SUM(CASE WHEN ensemble_flag = true THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS fraud_rate,
+    COUNT(DISTINCT CASE WHEN ensemble_flag = true THEN transaction_id END) AS fraud_count,
+    ROUND(COUNT(DISTINCT CASE WHEN ensemble_flag = true THEN transaction_id END) * 100.0 / NULLIF(COUNT(DISTINCT transaction_id), 0), 2) AS fraud_rate,
     ROUND(AVG(CAST(ensemble_score AS DOUBLE)), 4) AS avg_risk_score,
-    -- Time patterns
     ROUND(AVG(CASE WHEN hour_of_day BETWEEN 0 AND 5 THEN 1 ELSE 0 END) * 100, 2) AS late_night_pct,
     ROUND(AVG(CASE WHEN hour_of_day BETWEEN 18 AND 23 THEN 1 ELSE 0 END) * 100, 2) AS evening_pct
 FROM {catalog}.{schema}.gold_transactions_enriched
