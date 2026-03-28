@@ -132,9 +132,9 @@ def lookup_fraud_alerts(
         where_clause = " AND ".join(conditions)
         query = f"""
         SELECT transaction_id, amount, sender_id, receiver_id, category,
-               merchant_name, ensemble_score, final_risk_tier, time_slot,
-               transaction_date, hour_of_day, is_weekend,
-               txn_velocity_1h, amount_deviation
+               merchant_name, CAST(ensemble_score AS DOUBLE) AS ensemble_score,
+               final_risk_tier, time_slot,
+               transaction_date, hour_of_day, is_weekend
         FROM {CATALOG}.{SCHEMA}.gold_fraud_alerts_ml
         WHERE {where_clause}
         ORDER BY ensemble_score DESC
@@ -174,34 +174,37 @@ def lookup_fraud_alerts(
 
 
 def _explain_risk_factors(alert: dict) -> str:
-    """Generate a concise risk explanation from alert features."""
+    """Generate a concise risk explanation from available alert fields."""
     factors = []
     try:
-        score = float(alert.get("ensemble_score", 0))
+        score = float(alert.get("ensemble_score") or 0)
         if score > 0.8:
             factors.append(f"Very high risk score ({score:.2f})")
         elif score > 0.6:
             factors.append(f"High risk score ({score:.2f})")
 
-        amount = float(alert.get("amount", 0))
+        amount = float(alert.get("amount") or 0)
         if amount > 50000:
             factors.append(f"Large transaction (₹{amount:,.0f})")
+        elif amount > 10000:
+            factors.append(f"Significant amount (₹{amount:,.0f})")
 
-        deviation = float(alert.get("amount_deviation", 0))
-        if abs(deviation) > 2:
-            factors.append(f"Amount {abs(deviation):.1f}x standard deviations from sender's norm")
-
-        velocity = int(float(alert.get("txn_velocity_1h", 0)))
-        if velocity > 5:
-            factors.append(f"High velocity ({velocity} transactions in 1 hour)")
-
-        hour = int(float(alert.get("hour_of_day", 12)))
+        hour = int(float(alert.get("hour_of_day") or 12))
         if hour < 6:
-            factors.append("Late-night transaction (high-risk time window)")
+            factors.append("Late-night transaction (0:00-6:00)")
+        elif hour >= 22:
+            factors.append("Late-night transaction (22:00+)")
 
-        is_weekend = alert.get("is_weekend")
-        if str(is_weekend).lower() in ("true", "1"):
+        if str(alert.get("is_weekend", "")).lower() in ("true", "1"):
             factors.append("Weekend transaction")
+
+        tier = alert.get("final_risk_tier", "")
+        if tier == "critical":
+            factors.append("Classified as CRITICAL by ML ensemble")
+
+        category = alert.get("category", "")
+        if category:
+            factors.append(f"Category: {category}")
     except (ValueError, TypeError):
         pass
 

@@ -106,7 +106,8 @@ def main():
     logger.info(f"API:      http://localhost:{port}/invocations")
     logger.info(f"Health:   http://localhost:{port}/health")
 
-    _server.run(port=port)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":

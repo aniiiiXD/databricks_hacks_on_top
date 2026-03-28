@@ -35,7 +35,7 @@ SELECT DISTINCT
     month,
 
     -- Derived features for downstream ML
-    CASE WHEN day_of_week IN (1, 7) THEN true ELSE false END AS is_weekend,
+    CASE WHEN day_of_week IN ('Saturday', 'Sunday') OR is_weekend = true THEN true ELSE false END AS is_weekend,
     CASE
       WHEN hour_of_day BETWEEN 0 AND 5 THEN 'late_night'
       WHEN hour_of_day BETWEEN 6 AND 11 THEN 'morning'

@@ -30,9 +30,13 @@ print(f"Catalog: {catalog}")
 print(f"Schema: {schema}")
 print(f"Source: {source_path}")
 
-# Clean stale checkpoints from failed runs — RUN THIS if you hit schema errors
-dbutils.fs.rm(checkpoint_base, recurse=True)
-print("Checkpoints cleared.")
+# Clean stale checkpoints (set widget to "yes" if you need to re-ingest)
+dbutils.widgets.dropdown("clear_checkpoints", "no", ["yes", "no"], "Clear Checkpoints")
+if dbutils.widgets.get("clear_checkpoints") == "yes":
+    dbutils.fs.rm(checkpoint_base, recurse=True)
+    print("Checkpoints cleared.")
+else:
+    print("Checkpoints preserved (set clear_checkpoints=yes to reset).")
 
 # COMMAND ----------
 
@@ -98,7 +102,7 @@ bronze_txns = (txn_stream
         F.lit("").alias("sender_name"),
         F.lit("").alias("receiver_name"),
         F.col("merchant_category").cast("string").alias("category"),
-        F.concat(F.lit("MERCH_"), F.abs(F.hash("merchant_category")) % 500).cast("string").alias("merchant_id"),
+        F.concat(F.lit("MERCH_"), F.abs(F.hash(F.col("merchant_category"))) % 500).cast("string").alias("merchant_id"),
         F.col("merchant_category").cast("string").alias("merchant_name"),
         F.col("`transaction type`").cast("string").alias("payment_mode"),
         F.col("device_type").cast("string"),

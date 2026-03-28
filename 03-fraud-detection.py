@@ -113,13 +113,23 @@ feature_cols = [
     "ai_risk_score_num"
 ]
 
-# Sample if too large
+# Stratified sampling — preserve ALL fraud rows + sample normal rows
 row_count = featured_df.count()
-if row_count > 200000:
-    fraction = 200000 / row_count
-    pdf = featured_df.select(feature_cols + ["transaction_id", "is_fraud"]).sample(fraction=fraction, seed=42).toPandas()
+fraud_df = featured_df.filter(F.col("is_fraud") == True).select(feature_cols + ["transaction_id", "is_fraud"])
+normal_df = featured_df.filter((F.col("is_fraud") == False) | (F.col("is_fraud").isNull())).select(feature_cols + ["transaction_id", "is_fraud"])
+
+fraud_count = fraud_df.count()
+normal_count = normal_df.count()
+print(f"Total: {row_count:,} | Fraud: {fraud_count:,} | Normal: {normal_count:,}")
+
+# Keep all fraud, sample normal to max 200K total
+max_normal = min(200000 - fraud_count, normal_count)
+if normal_count > max_normal:
+    normal_sampled = normal_df.sample(fraction=max_normal / normal_count, seed=42)
 else:
-    pdf = featured_df.select(feature_cols + ["transaction_id", "is_fraud"]).toPandas()
+    normal_sampled = normal_df
+
+pdf = fraud_df.unionByName(normal_sampled).toPandas()
 
 for col in feature_cols:
     pdf[col] = pd.to_numeric(pdf[col], errors="coerce").fillna(0)

@@ -252,11 +252,11 @@ sender_profiles_enriched = (sender_profiles
 sender_profiles_final = sender_profiles_enriched.withColumn(
     "composite_risk_score",
     F.round(
-        F.lit(0.3) * F.col("avg_risk_score") +
-        F.lit(0.25) * F.col("personal_fraud_rate") / 100.0 +
-        F.lit(0.2) * F.least(F.col("pagerank") * 10000, F.lit(1.0)) +
-        F.lit(0.15) * F.col("late_night_pct") / 100.0 +
-        F.lit(0.1) * F.least(F.col("total_degree").cast("double") / 50.0, F.lit(1.0)),
+        F.lit(0.3) * F.least(F.coalesce(F.col("avg_risk_score"), F.lit(0.0)), F.lit(1.0)) +
+        F.lit(0.25) * F.least(F.coalesce(F.col("personal_fraud_rate"), F.lit(0.0)) / 100.0, F.lit(1.0)) +
+        F.lit(0.2) * F.least(F.coalesce(F.col("pagerank"), F.lit(0.0)) * 1000, F.lit(1.0)) +
+        F.lit(0.15) * F.least(F.coalesce(F.col("late_night_pct"), F.lit(0.0)) / 100.0, F.lit(1.0)) +
+        F.lit(0.1) * F.least(F.coalesce(F.col("total_degree").cast("double"), F.lit(0.0)) / 100.0, F.lit(1.0)),
         4
     )
 )

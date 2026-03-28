@@ -50,7 +50,7 @@ SELECT DISTINCT
     day_of_week,
     day_of_month,
     month,
-    CASE WHEN is_weekend = true OR day_of_week IN ('Saturday', 'Sunday') THEN true ELSE false END AS is_weekend,
+    CASE WHEN day_of_week IN ('Saturday', 'Sunday') OR is_weekend = true THEN true ELSE false END AS is_weekend,
     CASE
       WHEN hour_of_day BETWEEN 0 AND 5 THEN 'late_night'
       WHEN hour_of_day BETWEEN 6 AND 11 THEN 'morning'
@@ -94,7 +94,7 @@ SELECT DISTINCT
     TRIM(full_text) AS full_text,
     url,
     text_length,
-    SIZE(SPLIT(TRIM(full_text), '\\\\s+')) AS word_count,
+    SIZE(SPLIT(TRIM(full_text), ' ')) AS word_count,
     ingested_at
 FROM {catalog}.{schema}.bronze_circulars
 WHERE circular_id IS NOT NULL
