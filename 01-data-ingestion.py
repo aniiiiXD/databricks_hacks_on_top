@@ -61,7 +61,6 @@ from pyspark.sql.types import *
 txn_stream = (spark.readStream
     .format("cloudFiles")
     .option("cloudFiles.format", "json")
-    .option("multiLine", "true")
     .option("cloudFiles.inferColumnTypes", "true")
     .option("cloudFiles.schemaLocation", f"{checkpoint_base}/txn_schema")
     .option("pathGlobFilter", "*transaction*")
@@ -129,7 +128,6 @@ print("UPI Transactions ingestion started...")
 circular_stream = (spark.readStream
     .format("cloudFiles")
     .option("cloudFiles.format", "json")
-    .option("multiLine", "true")
     .option("cloudFiles.inferColumnTypes", "true")
     .option("cloudFiles.schemaLocation", f"{checkpoint_base}/circular_schema")
     .option("pathGlobFilter", "*circular*")
@@ -168,7 +166,7 @@ print("RBI Circulars ingestion started...")
 # Gov Schemes — likely CSV or JSON, use direct read (smaller dataset)
 # Try JSON first, fall back to CSV
 try:
-    schemes_df = spark.read.option("multiLine", "true").json(f"{source_path}*scheme*")
+    schemes_df = spark.read.json(f"{source_path}*scheme*")
     print("Loaded schemes from JSON")
 except:
     try:
