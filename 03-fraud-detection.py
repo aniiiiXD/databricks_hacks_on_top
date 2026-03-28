@@ -16,7 +16,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install scikit-learn imbalanced-learn shap --quiet
+# MAGIC %pip install scikit-learn imbalanced-learn --quiet
 
 # COMMAND ----------
 
@@ -501,43 +501,23 @@ with mlflow.start_run(run_name="ensemble_fraud_v1") as ensemble_run:
 
 # COMMAND ----------
 
+# Feature importance via Isolation Forest anomaly score contribution
+# (SHAP not available due to NumPy version constraints on serverless)
+print("Feature Importance (based on score variance when feature is permuted):")
+from sklearn.inspection import permutation_importance as perm_imp
+
 try:
-    import shap
-
-    with mlflow.start_run(run_name="feature_importance", nested=True):
-        # Use a sample for SHAP (computationally expensive)
-        X_sample = X_scaled[:min(1000, len(X_scaled))]
-
-        explainer = shap.IsolationForest(iforest)
-        shap_values = explainer(pd.DataFrame(X_sample, columns=feature_cols))
-
-        # Global feature importance (mean absolute SHAP value)
-        importance = pd.DataFrame({
-            "feature": feature_cols,
-            "mean_abs_shap": np.abs(shap_values.values).mean(axis=0)
-        }).sort_values("mean_abs_shap", ascending=False)
-
-        print("Feature Importance (SHAP):")
-        for _, row in importance.iterrows():
-            print(f"  {row['feature']:30s} {row['mean_abs_shap']:.4f}")
-            safe_log_metric(f"shap_{row['feature']}", row['mean_abs_shap'])
-
-        # Log importance table as artifact
-        importance.to_csv("/tmp/feature_importance.csv", index=False)
-        try:
-            mlflow.log_artifact("/tmp/feature_importance.csv")
-        except:
-            pass
-
-except Exception as e:
-    print(f"SHAP analysis skipped: {e}")
-    print("Falling back to Isolation Forest feature_importances_ (if available)")
-
-    # Alternative: permutation importance
+    y_labels = pdf["is_fraud"].fillna(False).astype(int)
+    perm_result = perm_imp(iforest, X_scaled[:min(2000, len(X_scaled))], y_labels[:min(2000, len(y_labels))], n_repeats=5, random_state=42, scoring="f1")
     importance = pd.DataFrame({
         "feature": feature_cols,
-        "importance": np.abs(iforest.score_samples(X_scaled[:1000])).mean()
-    })
+        "importance": perm_result.importances_mean
+    }).sort_values("importance", ascending=False)
+
+    for _, row in importance.iterrows():
+        print(f"  {row['feature']:30s} {row['importance']:.4f}")
+except Exception as e:
+    print(f"Permutation importance skipped: {e}")
 
 # COMMAND ----------
 
