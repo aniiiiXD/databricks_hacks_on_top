@@ -16,7 +16,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install scikit-learn imbalanced-learn --quiet
+# MAGIC %pip install scikit-learn --quiet
 
 # COMMAND ----------
 
