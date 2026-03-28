@@ -32,8 +32,7 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import AIMessage, ToolMessage, AIMessageChunk
 from langchain_core.tools import tool
-from databricks_langchain import ChatDatabricks
-from databricks_langchain.mcp import DatabricksMCPServer, DatabricksMultiServerMCPClient
+from databricks_langchain import ChatDatabricks, DatabricksMCPServer, DatabricksMultiServerMCPClient
 from databricks.sdk.service.sql import StatementParameterListItem
 
 from agent_server.utils import get_session_id, get_user_workspace_client
