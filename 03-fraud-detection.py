@@ -25,20 +25,55 @@ dbutils.widgets.text("schema", "main", "Schema Name")
 catalog = dbutils.widgets.get("catalog")
 schema = dbutils.widgets.get("schema")
 
-import mlflow
-import mlflow.sklearn
-import mlflow.spark
 import numpy as np
 import pandas as pd
 from datetime import datetime
 
-# Set MLflow experiment
+import os
+os.environ["MLFLOW_TRACKING_URI"] = "databricks"
+
+import mlflow
+import mlflow.sklearn
+
+# Suppress the modelRegistryUri warning on Free Edition
+try:
+    import mlflow.spark
+except Exception:
+    pass
+
+# Set experiment — this DOES work on Free Edition
 username = spark.sql("SELECT current_user()").collect()[0][0]
 experiment_path = f"/Users/{username}/digital-artha-fraud-detection"
-mlflow.set_experiment(experiment_path)
+
+try:
+    mlflow.set_experiment(experiment_path)
+    print(f"MLflow experiment: {experiment_path}")
+except Exception as e:
+    # If set_experiment fails, create it via the workspace path
+    print(f"MLflow set_experiment warning: {e}")
+    print("Trying alternative experiment setup...")
+    try:
+        mlflow.set_experiment(f"/Shared/digital-artha-fraud-detection")
+        print("MLflow experiment set to /Shared/digital-artha-fraud-detection")
+    except Exception as e2:
+        print(f"MLflow experiment setup failed: {e2}")
+        print("Continuing without MLflow tracking — training will still work.")
+
 mlflow.autolog(disable=True)  # We'll log manually for more control
 
-print(f"MLflow experiment: {experiment_path}")
+# Safe MLflow logging helpers — won't crash if MLflow is partially broken
+def safe_log_param(key, value):
+    try: mlflow.log_param(key, value)
+    except: pass
+
+def safe_log_metric(key, value):
+    try: mlflow.log_metric(key, value)
+    except: pass
+
+def safe_log_model(model, name):
+    try: mlflow.sklearn.log_model(model, name)
+    except: pass
+
 print(f"Data source: {catalog}.{schema}.gold_transactions")
 
 # COMMAND ----------
@@ -139,8 +174,25 @@ print(f"Feature-engineered transactions: {featured_df.count():,}")
 
 # COMMAND ----------
 
+# day_of_week is string ("Tuesday") in Kaggle data — encode it numerically
+# is_weekend might be bool/string — cast to int
+featured_df = (featured_df
+    .withColumn("day_of_week_num",
+        F.when(F.col("day_of_week") == "Monday", 1)
+        .when(F.col("day_of_week") == "Tuesday", 2)
+        .when(F.col("day_of_week") == "Wednesday", 3)
+        .when(F.col("day_of_week") == "Thursday", 4)
+        .when(F.col("day_of_week") == "Friday", 5)
+        .when(F.col("day_of_week") == "Saturday", 6)
+        .when(F.col("day_of_week") == "Sunday", 7)
+        .otherwise(F.col("day_of_week").cast("int"))
+    )
+    .withColumn("is_weekend_num", F.col("is_weekend").cast("int"))
+    .fillna(0, subset=["day_of_week_num", "is_weekend_num"])
+)
+
 feature_cols = [
-    "amount", "hour_of_day", "day_of_week", "is_weekend",
+    "amount", "hour_of_day", "day_of_week_num", "is_weekend_num",
     "txn_velocity_1h", "txn_velocity_6h", "txn_velocity_24h",
     "sender_avg_amount", "sender_std_amount",
     "amount_deviation", "amount_ratio_to_max", "amount_velocity_1h",
@@ -190,14 +242,14 @@ with mlflow.start_run(run_name="isolation_forest_v1") as if_run:
     max_samples = min(len(X_scaled), 10000)
     max_features = 0.8
 
-    mlflow.log_param("model_type", "IsolationForest")
-    mlflow.log_param("n_estimators", n_estimators)
-    mlflow.log_param("contamination", contamination_rate)
-    mlflow.log_param("max_samples", max_samples)
-    mlflow.log_param("max_features", max_features)
-    mlflow.log_param("n_features", len(feature_cols))
-    mlflow.log_param("training_rows", len(X_scaled))
-    mlflow.log_param("feature_cols", str(feature_cols))
+    safe_log_param("model_type", "IsolationForest")
+    safe_log_param("n_estimators", n_estimators)
+    safe_log_param("contamination", contamination_rate)
+    safe_log_param("max_samples", max_samples)
+    safe_log_param("max_features", max_features)
+    safe_log_param("n_features", len(feature_cols))
+    safe_log_param("training_rows", len(X_scaled))
+    safe_log_param("feature_cols", str(feature_cols))
 
     iforest = IsolationForest(
         n_estimators=n_estimators,
@@ -231,12 +283,12 @@ with mlflow.start_run(run_name="isolation_forest_v1") as if_run:
         except:
             auc = 0.0
 
-        mlflow.log_metric("precision", precision)
-        mlflow.log_metric("recall", recall)
-        mlflow.log_metric("f1_score", f1)
-        mlflow.log_metric("auc_roc", auc)
-        mlflow.log_metric("flagged_count", int(pdf["if_anomaly"].sum()))
-        mlflow.log_metric("flagged_rate", float(pdf["if_anomaly"].mean()))
+        safe_log_metric("precision", precision)
+        safe_log_metric("recall", recall)
+        safe_log_metric("f1_score", f1)
+        safe_log_metric("auc_roc", auc)
+        safe_log_metric("flagged_count", int(pdf["if_anomaly"].sum()))
+        safe_log_metric("flagged_rate", float(pdf["if_anomaly"].mean()))
 
         print(f"Isolation Forest Results:")
         print(f"  Precision: {precision:.4f}")
@@ -246,8 +298,8 @@ with mlflow.start_run(run_name="isolation_forest_v1") as if_run:
         print(f"  Flagged:   {pdf['if_anomaly'].sum():,} / {len(pdf):,} ({pdf['if_anomaly'].mean()*100:.2f}%)")
 
     # Log model
-    mlflow.sklearn.log_model(iforest, "isolation_forest_model")
-    mlflow.sklearn.log_model(scaler, "scaler")
+    safe_log_model(iforest, "isolation_forest_model")
+    safe_log_model(scaler, "scaler")
 
     if_run_id = if_run.info.run_id
     print(f"\nMLflow Run ID: {if_run_id}")
@@ -270,7 +322,7 @@ from pyspark.ml.functions import vector_to_array
 
 # Numeric feature columns for MLlib
 numeric_features = [
-    "amount", "hour_of_day", "day_of_week",
+    "amount", "hour_of_day", "day_of_week_num", "is_weekend_num",
     "txn_velocity_1h", "txn_velocity_6h", "txn_velocity_24h",
     "sender_avg_amount", "amount_deviation", "amount_ratio_to_max",
     "amount_velocity_1h", "velocity_x_deviation",
@@ -280,10 +332,10 @@ numeric_features = [
 
 with mlflow.start_run(run_name="kmeans_anomaly_v1") as km_run:
     k = 8  # Number of clusters
-    mlflow.log_param("model_type", "KMeans_AnomalyDetection")
-    mlflow.log_param("k", k)
-    mlflow.log_param("features", str(numeric_features))
-    mlflow.log_param("max_iter", 50)
+    safe_log_param("model_type", "KMeans_AnomalyDetection")
+    safe_log_param("k", k)
+    safe_log_param("features", str(numeric_features))
+    safe_log_param("max_iter", 50)
 
     # MLlib pipeline: Assemble → Scale → Cluster
     assembler = VectorAssembler(inputCols=numeric_features, outputCol="raw_features", handleInvalid="skip")
@@ -297,7 +349,7 @@ with mlflow.start_run(run_name="kmeans_anomaly_v1") as km_run:
     # Evaluate clustering quality
     evaluator = ClusteringEvaluator(featuresCol="scaled_features", predictionCol="cluster")
     silhouette = evaluator.evaluate(predictions)
-    mlflow.log_metric("silhouette_score", silhouette)
+    safe_log_metric("silhouette_score", silhouette)
     print(f"Silhouette Score: {silhouette:.4f}")
 
     # --- Compute distance to nearest cluster center ---
@@ -332,10 +384,10 @@ with mlflow.start_run(run_name="kmeans_anomaly_v1") as km_run:
 
     # Anomaly threshold: beyond 95th percentile
     threshold = dist_stats["p95_dist"]
-    mlflow.log_param("anomaly_threshold_percentile", 95)
-    mlflow.log_metric("distance_mean", float(dist_stats["mean_dist"]))
-    mlflow.log_metric("distance_std", float(dist_stats["std_dist"]))
-    mlflow.log_metric("distance_p95", float(threshold))
+    safe_log_param("anomaly_threshold_percentile", 95)
+    safe_log_metric("distance_mean", float(dist_stats["mean_dist"]))
+    safe_log_metric("distance_std", float(dist_stats["std_dist"]))
+    safe_log_metric("distance_p95", float(threshold))
 
     # Normalize distances to [0, 1]
     max_dist = predictions_with_dist.select(F.max("distance_to_center")).collect()[0][0]
@@ -346,8 +398,8 @@ with mlflow.start_run(run_name="kmeans_anomaly_v1") as km_run:
 
     km_flagged = predictions_with_dist.filter(F.col("km_anomaly") == 1).count()
     km_total = predictions_with_dist.count()
-    mlflow.log_metric("flagged_count", km_flagged)
-    mlflow.log_metric("flagged_rate", km_flagged / km_total)
+    safe_log_metric("flagged_count", km_flagged)
+    safe_log_metric("flagged_rate", km_flagged / km_total)
 
     print(f"KMeans flagged: {km_flagged:,} / {km_total:,} ({km_flagged/km_total*100:.2f}%)")
 
@@ -355,7 +407,7 @@ with mlflow.start_run(run_name="kmeans_anomaly_v1") as km_run:
     display(predictions_with_dist.groupBy("cluster").count().orderBy("cluster"))
 
     # Log MLlib model
-    mlflow.spark.log_model(model, "kmeans_pipeline_model")
+    # mlflow.spark.log_model(model, "kmeans_pipeline_model")
 
     km_run_id = km_run.info.run_id
     print(f"\nMLflow Run ID: {km_run_id}")
@@ -376,11 +428,11 @@ with mlflow.start_run(run_name="ensemble_fraud_v1") as ensemble_run:
     w_km = 0.35   # KMeans distance
     w_ai = 0.25   # AI risk label from DLT ai_query()
 
-    mlflow.log_param("model_type", "WeightedEnsemble")
-    mlflow.log_param("weight_isolation_forest", w_if)
-    mlflow.log_param("weight_kmeans", w_km)
-    mlflow.log_param("weight_ai_risk", w_ai)
-    mlflow.log_param("ensemble_threshold", 0.5)
+    safe_log_param("model_type", "WeightedEnsemble")
+    safe_log_param("weight_isolation_forest", w_if)
+    safe_log_param("weight_kmeans", w_km)
+    safe_log_param("weight_ai_risk", w_ai)
+    safe_log_param("ensemble_threshold", 0.5)
 
     # Join IF scores back to Spark DataFrame
     if_scores_pdf = pdf[["transaction_id", "if_score", "if_anomaly"]].copy()
@@ -419,10 +471,10 @@ with mlflow.start_run(run_name="ensemble_fraud_v1") as ensemble_run:
         except:
             auc = 0.0
 
-        mlflow.log_metric("ensemble_precision", precision)
-        mlflow.log_metric("ensemble_recall", recall)
-        mlflow.log_metric("ensemble_f1", f1)
-        mlflow.log_metric("ensemble_auc_roc", auc)
+        safe_log_metric("ensemble_precision", precision)
+        safe_log_metric("ensemble_recall", recall)
+        safe_log_metric("ensemble_f1", f1)
+        safe_log_metric("ensemble_auc_roc", auc)
 
         print(f"Ensemble Results:")
         print(f"  Precision: {precision:.4f}")
@@ -432,9 +484,9 @@ with mlflow.start_run(run_name="ensemble_fraud_v1") as ensemble_run:
 
     total_flagged = ensemble_df.filter(F.col("ensemble_flag") == True).count()
     total = ensemble_df.count()
-    mlflow.log_metric("total_flagged", total_flagged)
-    mlflow.log_metric("total_transactions", total)
-    mlflow.log_metric("overall_flag_rate", total_flagged / total)
+    safe_log_metric("total_flagged", total_flagged)
+    safe_log_metric("total_transactions", total)
+    safe_log_metric("overall_flag_rate", total_flagged / total)
 
     print(f"\nEnsemble flagged: {total_flagged:,} / {total:,} ({total_flagged/total*100:.2f}%)")
     display(ensemble_df.groupBy("final_risk_tier").count().orderBy("final_risk_tier"))
@@ -469,11 +521,14 @@ try:
         print("Feature Importance (SHAP):")
         for _, row in importance.iterrows():
             print(f"  {row['feature']:30s} {row['mean_abs_shap']:.4f}")
-            mlflow.log_metric(f"shap_{row['feature']}", row['mean_abs_shap'])
+            safe_log_metric(f"shap_{row['feature']}", row['mean_abs_shap'])
 
         # Log importance table as artifact
         importance.to_csv("/tmp/feature_importance.csv", index=False)
-        mlflow.log_artifact("/tmp/feature_importance.csv")
+        try:
+            mlflow.log_artifact("/tmp/feature_importance.csv")
+        except:
+            pass
 
 except Exception as e:
     print(f"SHAP analysis skipped: {e}")
