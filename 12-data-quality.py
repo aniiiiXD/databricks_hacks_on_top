@@ -39,7 +39,7 @@ tags = {
     "gold_schemes": {"domain": "inclusion", "tier": "gold", "pii": "false", "quality": "business_ready"},
     "gold_transactions_enriched": {"domain": "fraud", "tier": "platinum", "pii": "false", "quality": "ml_scored"},
     "gold_fraud_alerts_ml": {"domain": "fraud", "tier": "platinum", "pii": "false", "quality": "ml_scored"},
-    "platinum_fraud_rings": {"domain": "fraud", "tier": "platinum", "pii": "false", "quality": "graph_analysis"},
+    "platinum_anomaly_patterns": {"domain": "fraud", "tier": "platinum", "pii": "false", "quality": "pattern_analysis"},
     "platinum_sender_profiles": {"domain": "fraud", "tier": "platinum", "pii": "true", "quality": "feature_store"},
     "platinum_merchant_profiles": {"domain": "fraud", "tier": "platinum", "pii": "false", "quality": "feature_store"},
 }
@@ -64,7 +64,7 @@ print("\nUC Tags applied.")
 table_comments = {
     "gold_transactions_enriched": "ML-scored UPI transactions with IsolationForest + KMeans ensemble fraud scores. Platinum tier.",
     "gold_fraud_alerts_ml": "Transactions flagged by ML ensemble (ensemble_flag=true). Used for fraud monitoring.",
-    "platinum_fraud_rings": "Fraud rings detected via NetworkX graph analysis. Connected components with 3+ accounts.",
+    "platinum_anomaly_patterns": "Fraud anomaly patterns discovered via rule-based + ML classification of flagged transactions.",
     "platinum_sender_profiles": "Per-sender behavioral profiles with PageRank, degree centrality, fraud rate, and composite risk score.",
     "platinum_merchant_profiles": "Per-merchant category risk profiles with fraud rates and temporal patterns.",
 }
@@ -149,7 +149,7 @@ try:
     CREATE OR REPLACE VIEW {catalog}.{schema}.mv_high_risk_senders AS
     SELECT *
     FROM {catalog}.{schema}.platinum_sender_profiles
-    WHERE composite_risk_score > 0.5 OR is_hub = true
+    WHERE composite_risk_score > 0.3
     ORDER BY composite_risk_score DESC
     """)
     print("Warm tier view created: mv_high_risk_senders")
@@ -171,7 +171,7 @@ tables = [
     "silver_transactions", "silver_circulars", "silver_schemes",
     "gold_transactions", "gold_fraud_alerts", "gold_circular_chunks", "gold_schemes",
     "gold_transactions_enriched", "gold_fraud_alerts_ml",
-    "platinum_fraud_rings", "platinum_sender_profiles", "platinum_merchant_profiles"
+    "platinum_anomaly_patterns", "platinum_sender_profiles", "platinum_merchant_profiles"
 ]
 
 quality_data = []

@@ -215,9 +215,9 @@ SELECT
     (SELECT COUNT(DISTINCT circular_id) FROM {catalog}.{schema}.gold_circular_chunks) AS rbi_circulars_indexed,
 
     -- Graph Intelligence
-    (SELECT COUNT(*) FROM {catalog}.{schema}.platinum_fraud_rings) AS fraud_rings_detected,
-    (SELECT SUM(size) FROM {catalog}.{schema}.platinum_fraud_rings) AS accounts_in_fraud_rings,
-    (SELECT SUM(CASE WHEN is_hub THEN 1 ELSE 0 END) FROM {catalog}.{schema}.platinum_sender_profiles) AS money_mule_hubs_identified
+    (SELECT COUNT(*) FROM {catalog}.{schema}.platinum_anomaly_patterns) AS anomaly_patterns_detected,
+    (SELECT SUM(occurrence_count) FROM {catalog}.{schema}.platinum_anomaly_patterns) AS flagged_transactions_classified,
+    (SELECT COUNT(*) FROM {catalog}.{schema}.platinum_sender_profiles WHERE composite_risk_score > 0.3) AS high_risk_senders_identified
 """)
 
 print("=" * 60)
