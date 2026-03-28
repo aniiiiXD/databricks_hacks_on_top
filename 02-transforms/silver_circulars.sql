@@ -24,17 +24,20 @@ SELECT DISTINCT
     -- Word count for analytics
     SIZE(SPLIT(TRIM(full_text), '\\s+')) AS word_count,
 
-    -- AI topic classification — inline in the pipeline
-    LOWER(TRIM(ai_query(
-      'databricks-meta-llama-3-1-70b-instruct',
-      CONCAT(
-        'You are an RBI regulatory document classifier. Classify this circular into exactly one of these categories: fraud_prevention, monetary_policy, lending_regulations, digital_payments, consumer_protection, banking_operations, forex, investment, compliance. Output ONLY the label, nothing else.',
-        '\n\nTitle: ', COALESCE(title, ''),
-        '\nDepartment: ', COALESCE(department, ''),
-        '\nFirst 500 chars: ', SUBSTRING(COALESCE(full_text, ''), 1, 500)
-      ),
-      'STRING'
-    ))) AS topic_label,
+    -- Topic classification via keyword matching (ai_query not available on Free Edition)
+    CASE
+      WHEN LOWER(COALESCE(title, '') || ' ' || SUBSTRING(COALESCE(full_text, ''), 1, 500))
+           LIKE '%fraud%' OR LOWER(title) LIKE '%cyber%' OR LOWER(title) LIKE '%unauthori%' THEN 'fraud_prevention'
+      WHEN LOWER(title) LIKE '%upi%' OR LOWER(title) LIKE '%digital payment%' OR LOWER(title) LIKE '%payment aggregat%'
+           OR LOWER(title) LIKE '%ppi%' OR LOWER(title) LIKE '%mobile banking%' THEN 'digital_payments'
+      WHEN LOWER(title) LIKE '%kyc%' OR LOWER(title) LIKE '%aml%' OR LOWER(title) LIKE '%money laundering%'
+           OR LOWER(title) LIKE '%uapa%' OR LOWER(title) LIKE '%sanction%' THEN 'compliance'
+      WHEN LOWER(title) LIKE '%lend%' OR LOWER(title) LIKE '%credit%' OR LOWER(title) LIKE '%loan%'
+           OR LOWER(title) LIKE '%nbfc%' OR LOWER(title) LIKE '%interest rate%' THEN 'lending_regulations'
+      WHEN LOWER(title) LIKE '%consumer%' OR LOWER(title) LIKE '%grievance%' OR LOWER(title) LIKE '%ombudsman%' THEN 'consumer_protection'
+      WHEN LOWER(title) LIKE '%rtgs%' OR LOWER(title) LIKE '%neft%' OR LOWER(title) LIKE '%nach%' THEN 'payment_systems'
+      ELSE 'banking_operations'
+    END AS topic_label,
 
     ingested_at
 

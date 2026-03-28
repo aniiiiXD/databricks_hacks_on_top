@@ -51,25 +51,12 @@ SELECT DISTINCT
       ELSE 'very_large'
     END AS amount_bucket,
 
-    -- Inline LLM risk classification via ai_query()
-    -- This runs the LLM INSIDE the DLT pipeline — no Python needed
+    -- Risk label based on rule-based heuristics (ai_query not available on Free Edition)
     CASE
-      WHEN amount > 0 THEN
-        LOWER(TRIM(ai_query(
-          'databricks-meta-llama-3-1-70b-instruct',
-          CONCAT(
-            'You are a UPI fraud detection classifier. Classify this transaction risk as exactly one of: low, medium, high, critical. Output ONLY the single label word, nothing else.',
-            '\n\nTransaction details:',
-            '\n- Amount: ₹', CAST(amount AS STRING),
-            '\n- Category: ', COALESCE(category, 'unknown'),
-            '\n- Hour: ', CAST(hour_of_day AS STRING),
-            '\n- Day of week: ', CAST(day_of_week AS STRING),
-            '\n- Weekend: ', CASE WHEN day_of_week IN (1, 7) THEN 'yes' ELSE 'no' END,
-            '\n- Payment mode: ', COALESCE(payment_mode, 'unknown'),
-            '\n- Device: ', COALESCE(device_type, 'unknown')
-          ),
-          'STRING'
-        )))
+      WHEN amount > 50000 AND hour_of_day BETWEEN 0 AND 5 THEN 'critical'
+      WHEN amount > 50000 THEN 'high'
+      WHEN amount > 10000 AND hour_of_day BETWEEN 0 AND 5 THEN 'high'
+      WHEN amount > 10000 THEN 'medium'
       ELSE 'low'
     END AS ai_risk_label,
 

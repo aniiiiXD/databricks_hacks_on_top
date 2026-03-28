@@ -22,19 +22,8 @@ SELECT
     url,
     eligibility_json,
 
-    -- AI-generated plain-language summary for display
-    ai_query(
-      'databricks-meta-llama-3-1-70b-instruct',
-      CONCAT(
-        'Summarize this Indian government scheme in 2 simple sentences that a rural citizen can understand. Include who is eligible and what benefit they get.',
-        '\n\nScheme: ', scheme_name,
-        '\nMinistry: ', ministry,
-        '\nDescription: ', COALESCE(description, ''),
-        '\nEligibility: ', COALESCE(eligibility_criteria, ''),
-        '\nBenefits: ', COALESCE(benefits, '')
-      ),
-      'STRING'
-    ) AS plain_summary,
+    -- Plain-language summary (concatenated from available fields)
+    CONCAT(scheme_name, ': ', LEFT(COALESCE(benefits, description, ''), 200)) AS plain_summary,
 
     ingested_at
 
