@@ -985,12 +985,7 @@ with gr.Blocks(title="BlackIce Platform") as demo:
             rings_btn.click(fn=get_fraud_rings, outputs=rings_out)
             ring_members_btn.click(fn=get_ring_members, inputs=ring_id_input, outputs=ring_members_out)
 
-            # Category x Time matrix
-            gr.Markdown("---")
-            gr.Markdown("### Category x Time Slot Risk")
-            cat_matrix_plot = gr.Plot()
-            cat_matrix_btn = gr.Button("Load Category Matrix", size="sm", variant="secondary")
-            cat_matrix_btn.click(fn=get_category_risk_matrix, outputs=cat_matrix_plot)
+            # Category x Time matrix removed — cluttered the UI
 
         # ================================================================
         # TAB 2: ASK AGENT
@@ -1073,7 +1068,7 @@ with gr.Blocks(title="BlackIce Platform") as demo:
     demo.load(fn=get_kpis, outputs=kpi_output)
     demo.load(fn=load_all_charts, outputs=[heatmap_plot, risk_dist_plot, trend_plot, amount_plot])
     demo.load(fn=get_ring_network_graph, outputs=ring_graph_plot)
-    demo.load(fn=get_category_risk_matrix, outputs=cat_matrix_plot)
+    # cat_matrix removed
 
 
 if __name__ == "__main__":
