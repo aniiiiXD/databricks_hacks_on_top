@@ -243,19 +243,121 @@ def get_recovery_guide(fraud_type):
 # ============================================================
 
 custom_css = """
-.gradio-container { max-width: 1200px !important; }
+/* BlackIce Premium Elegance Theme */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Montserrat:wght@300;400;500;600&family=Inter:wght@300;400;500&display=swap');
+
+body { font-family: 'Inter', sans-serif !important; font-weight: 300 !important; }
+.gradio-container { max-width: 100% !important; padding: 0 4% !important; }
+
+h1, h2, h3, h4, h5, h6 { font-family: 'Playfair Display', serif !important; font-weight: 400 !important; }
+
+/* Subtitle */
+.elegant-subtitle {
+    font-family: 'Montserrat', sans-serif !important;
+    font-weight: 300;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #888888;
+}
+
+/* Tabs */
+.tabs > .tab-nav { border-bottom: 1px solid rgba(255,255,255,0.05) !important; margin-bottom: 30px; }
+.tabs > .tab-nav > button { border: none !important; border-bottom: 1px solid transparent !important; background: transparent !important; color: #888888 !important; font-family: 'Montserrat', sans-serif !important; font-weight: 400; font-size: 0.9em; letter-spacing: 1px; text-transform: uppercase; padding-bottom: 15px; margin-right: 35px;}
+.tabs > .tab-nav > button.selected { border-bottom: 1px solid #c5a059 !important; color: #c5a059 !important; background: transparent !important; }
+.tabs > .tab-nav > button:hover:not(.selected) { color: #ededed !important; }
+
+/* Tables */
+table { border-collapse: collapse; width: 100%; margin-top: 15px; font-family: 'Inter', sans-serif; font-size: 0.85em; font-weight: 300; border-radius: 2px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
+th { background: transparent !important; color: #888888 !important; font-family: 'Montserrat', sans-serif; font-weight: 400; padding: 16px 20px; text-align: left; text-transform: uppercase; font-size: 0.75em; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+td { border-bottom: 1px solid rgba(255,255,255,0.02) !important; padding: 14px 20px; }
+tr:last-child td { border-bottom: none !important; }
+tr:hover td { background: rgba(255,255,255,0.01) !important; }
+
+a { color: #c5a059 !important; text-decoration: none; transition: opacity 0.2s; }
+a:hover { opacity: 0.7; }
 footer { display: none !important; }
+
+.prose strong { color: #fff !important; font-weight: 500; font-family: 'Montserrat', sans-serif; }
+
+/* Premium Chatbot Integration */
+div[class*='message'] { border-radius: 2px !important; font-family: 'Inter', sans-serif !important; font-weight: 300 !important; font-size: 0.95em !important; box-shadow: none !important; }
+div[class*='message'][class*='bot'] { background: rgba(255, 255, 255, 0.01) !important; border: 1px solid rgba(255,255,255,0.05) !important; border-left: 2px solid #c5a059 !important; padding: 12px 18px !important; }
+div[class*='message'][class*='user'] { background: rgba(197, 160, 89, 0.05) !important; border: 1px solid rgba(255,255,255,0.05) !important; border-right: 2px solid #c5a059 !important; color: #c5a059 !important; padding: 12px 18px !important; }
+
+/* Chat Input Styling */
+textarea { font-family: 'Inter', sans-serif !important; font-weight: 300 !important; letter-spacing: 0.5px; }
+div[class*='form'] > div { border-radius: 2px !important; }
+div[class*='form']:focus-within { border-color: #c5a059 !important; box-shadow: none !important; }
 """
 
-with gr.Blocks(title="Digital-Artha", css=custom_css) as demo:
+theme = gr.themes.Monochrome(
+    font=[gr.themes.GoogleFont("Inter"), "sans-serif"],
+).set(
+    body_background_fill="#060606",
+    block_background_fill="#0f0f0f",
+    block_border_color="rgba(255,255,255,0.05)",
+    border_color_primary="rgba(255,255,255,0.05)",
+    border_color_accent="#c5a059",
+    
+    # Text
+    body_text_color="#ededed",
+    block_label_text_color="#888888",
+    block_title_text_color="#ededed",
+    
+    # Inputs (Sliders, Dropdowns, Textboxes)
+    input_background_fill="#0a0a0a",
+    input_border_color="rgba(255,255,255,0.05)",
+    input_border_color_focus="#c5a059",
+    input_placeholder_color="#555555",
+    
+    # Selectable components (Radio, Checkbox, Slider)
+    slider_color="#c5a059",
+    checkbox_background_color_selected="#c5a059",
+    checkbox_border_color_selected="#c5a059",
+    checkbox_background_color_selected_hover="#e2c884",
+    radio_circle="rgba(255, 255, 255, 0.05)",
+    
+    # Buttons
+    button_primary_background_fill="#c5a059",
+    button_primary_text_color="#000000",
+    button_primary_background_fill_hover="#e2c884",
+    button_primary_border_color="#c5a059",
+    
+    button_secondary_background_fill="#0f0f0f",
+    button_secondary_text_color="#ededed",
+    button_secondary_background_fill_hover="#1a1a1a",
+    button_secondary_border_color="rgba(255,255,255,0.05)",
+    
+    # Radii
+    block_radius="4px",
+    input_radius="4px",
+    button_large_radius="4px",
+    button_small_radius="4px",
+
+    # Misc
+    color_accent_soft="rgba(197, 160, 89, 0.05)",
+    panel_background_fill="#060606"
+)
+
+with gr.Blocks(title="BlackIce Platform", theme=theme, css=custom_css) as demo:
 
     gr.Markdown("""
-    <div style="text-align: center; padding: 20px 0;">
-    <h1>Digital-Artha</h1>
-    <h3>AI-Powered Financial Intelligence for India</h3>
-    <p><b>Fraud Detection</b> &nbsp;|&nbsp; <b>RBI Regulations</b> &nbsp;|&nbsp; <b>Government Schemes</b> &nbsp;|&nbsp; <b>Fraud Recovery</b></p>
-    <p style="color: #888; font-size: 0.9em;">Powered by Databricks Lakehouse &nbsp;|&nbsp; IsolationForest + KMeans Ensemble &nbsp;|&nbsp; RAG over 80 RBI Circulars &nbsp;|&nbsp; 170 Government Schemes</p>
+    <div style="padding: 50px 0 30px 0; max-width: 800px;">
+    <h1 style="font-size: 4.5em; margin: 0; color: #fff; line-height: 1.1; font-family: 'Playfair Display', serif; font-weight: 400; letter-spacing: -2px;">
+      BlackIce<span style="font-style: italic; color: #c5a059; font-weight: 400;">.</span>
+    </h1>
+    <h3 class="elegant-subtitle" style="margin-top: 25px; font-size: 0.9em;">
+    Financial Intelligence & Risk Analysis &mdash; Databricks Lakehouse
+    </h3>
+    
+    <div style="display: flex; gap: 24px; margin-top: 40px; font-family: 'Montserrat', sans-serif; font-size: 0.75em; color: #888; text-transform: uppercase; letter-spacing: 1.5px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 20px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> Threat Hunting</div>
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> RBI Directive DB</div>
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> Scheme Matching</div>
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> Recovery Ops</div>
     </div>
+    </div>
+    <div style="width: 100%; height: 1px; background: rgba(255,255,255,0.05); margin-bottom: 40px;"></div>
     """)
 
     with gr.Tabs():
@@ -291,8 +393,8 @@ with gr.Blocks(title="Digital-Artha", css=custom_css) as demo:
                     risk_btn.click(fn=get_risky_senders, outputs=risk_out)
 
         # ---- TAB 2: ASK AGENT ----
-        with gr.Tab("Ask Digital-Artha"):
-            gr.Markdown("### AI Financial Assistant — 7 Tools | Hindi Support | MCP Protocol")
+        with gr.Tab("Ask BlackIce"):
+            gr.Markdown("### Intelligent Agent Workspace — 7 Tools | Hindi Support | MCP Protocol")
             gr.ChatInterface(
                 fn=call_agent,
                 examples=[
@@ -402,9 +504,10 @@ Liquid Clustering, UC Tags, FAISS on Volumes, MCP Protocol, Apps Architecture
 
 
 if __name__ == "__main__":
-    print("\n" + "="*50)
-    print("Digital-Artha: Financial Intelligence Platform")
-    print("="*50)
-    print("\nStarting Gradio app with public URL...")
-    print("Share the public URL with judges!\n")
+    print("\n" + "="*55)
+    print("BlackIce // 0xArtha : APEX NETWORK ONLINE")
+    print("SYSTEMS GREEN. HUNTING ANOMALIES.")
+    print("="*55)
+    print("\nInitializing Uplink with public URL...")
+    print("Share the encrypted channel with judges!\n")
     demo.launch(server_port=7860, share=True)
