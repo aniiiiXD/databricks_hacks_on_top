@@ -1060,7 +1060,11 @@ with gr.Blocks(title="BlackIce Platform") as demo:
             scheme_btn.click(fn=find_schemes, inputs=[age_in, income_in, occ_in, state_in, gender_in, lang_in], outputs=scheme_out)
 
     # Auto-load KPIs on page open
+    # Auto-load everything on page open — no manual clicking needed
     demo.load(fn=get_kpis, outputs=kpi_output)
+    demo.load(fn=load_all_charts, outputs=[heatmap_plot, risk_dist_plot, trend_plot, amount_plot])
+    demo.load(fn=get_ring_network_graph, outputs=ring_graph_plot)
+    demo.load(fn=get_category_risk_matrix, outputs=cat_matrix_plot)
 
 
 if __name__ == "__main__":
