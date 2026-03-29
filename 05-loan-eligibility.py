@@ -141,5 +141,28 @@ print(f"\n{result['explanation']}")
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 6. Log to MLflow
+
+# COMMAND ----------
+
+import mlflow
+mlflow.set_tracking_uri("databricks")
+mlflow.set_registry_uri("databricks")
+
+schemes_count = spark.table(f"{catalog}.{schema}.gold_schemes").count()
+ministries = spark.sql(f"SELECT COUNT(DISTINCT ministry) FROM {catalog}.{schema}.gold_schemes").collect()[0][0]
+
+with mlflow.start_run(run_name="loan_eligibility_engine"):
+    mlflow.log_param("matching_method", "PySpark_filter_rules")
+    mlflow.log_param("explanation_model", "databricks-llama-4-maverick")
+    mlflow.log_param("languages_supported", "english,hindi,marathi,tamil,telugu")
+    mlflow.log_metric("schemes_indexed", schemes_count)
+    mlflow.log_metric("ministries_covered", ministries)
+    mlflow.log_metric("test_matches", result["total_matches"])
+print("✅ MLflow logged: loan_eligibility_engine")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Complete
 # MAGIC **Next:** Run `06-metric-view.py`
