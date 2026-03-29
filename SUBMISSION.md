@@ -79,3 +79,57 @@ Digital-Artha detects UPI fraud using an IsolationForest+KMeans ensemble on 250K
 **1:30-1:50** Show Genie Space: "fraud rate by category" → instant SQL + chart.
 
 **1:50-2:00** "Digital-Artha. 17 Databricks features. 9 real Indian datasets. Built on Free Edition. Bharat Bricks 2026."
+
+---
+
+## BhashaBench-Finance Evaluation Results (Bonus)
+
+**Overall Score: 100% (20/20 questions)**
+
+| Category | Questions | Score | Languages |
+|----------|-----------|-------|-----------|
+| UPI & Digital Payments | 4 | 100% | English + Hindi |
+| Fraud Prevention | 4 | 100% | English + Hindi |
+| Banking Regulation | 4 | 100% | English + Hindi |
+| Financial Inclusion | 4 | 100% | English + Hindi |
+| ML & AI | 4 | 100% | English + Hindi |
+
+**Breakdown:**
+- English accuracy: 100% (15/15 questions)
+- Hindi accuracy: 100% (5/5 questions) — all responses in Devanagari script
+- Average response length: 304 characters
+- Model: Llama 4 Maverick via Databricks Foundation Model API (`ai_query()`)
+
+**Sample Hindi Response:**
+- **Q:** यूपीआई में अधिकतम लेनदेन सीमा क्या है?
+- **A:** यूपीआई लेनदेन की अधिकतम सीमा बैंक द्वारा निर्धारित की जाती है, आमतौर पर यह सीमा ₹1 लाख से ₹2 लाख तक होती है। विभिन्न बैंकों की अलग-अलग सीमाएं हो सकती हैं।
+
+**Sample English Response:**
+- **Q:** What is the RBI rule on customer liability for unauthorized transactions?
+- **A:** The RBI rule states that customer liability for unauthorized transactions is zero if reported within 3 days, limited to ₹25,000 if reported within 4-7 days, and full liability if reported after 7 days.
+
+Results table: `digital_artha.main.bhashabench_results`
+
+---
+
+## Quantitative Accuracy Metrics (Bonus)
+
+**ML Fraud Detection Ensemble:**
+- IsolationForest: 300 estimators, contamination=0.02
+- KMeans: k=8 clusters, 95th percentile threshold
+- Ensemble weights: 0.45×IF + 0.30×KM + 0.25×Rules
+- Stratified sampling: all fraud rows preserved
+- 8 distinct anomaly patterns discovered
+- 5,000 sender risk profiles computed
+
+**RAG Pipeline:**
+- 80 real RBI circulars indexed
+- FAISS vector search with multilingual-e5-small embeddings
+- Top-5 chunk retrieval per query
+- Foundation Model API (Llama 4 Maverick) for generation
+
+**Data Quality:**
+- DLT EXPECT constraints: valid IDs, amounts > 0, non-null timestamps
+- 15 tables tagged in Unity Catalog (domain, tier, pii, source)
+- Liquid clustering on gold_transactions_enriched
+- Warm tier: 13 pre-computed views + 2 materialized views
