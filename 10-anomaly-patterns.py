@@ -292,6 +292,21 @@ print("Tables created:")
 print(f"  - {catalog}.{schema}.platinum_anomaly_patterns")
 print(f"  - {catalog}.{schema}.platinum_sender_profiles")
 print(f"  - {catalog}.{schema}.platinum_merchant_profiles")
+
+# Log to MLflow
+import mlflow
+mlflow.set_tracking_uri("databricks")
+mlflow.set_registry_uri("databricks")
+
+with mlflow.start_run(run_name="anomaly_pattern_discovery"):
+    mlflow.log_param("method", "rule_based_pattern_classification")
+    mlflow.log_param("patterns_defined", 8)
+    mlflow.log_metric("total_transactions", total_txns)
+    mlflow.log_metric("flagged_transactions", flagged)
+    mlflow.log_metric("flag_rate", flagged / total_txns)
+    mlflow.log_metric("anomaly_patterns", patterns)
+    mlflow.log_metric("sender_profiles", senders)
+print(f"✅ MLflow logged: anomaly_pattern_discovery")
 print(f"  - {catalog}.{schema}.state_fraud_analysis")
 
 # COMMAND ----------

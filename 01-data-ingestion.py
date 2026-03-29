@@ -107,9 +107,9 @@ bronze_txns = (combined_stream
         F.col("`transaction id`").cast("string").alias("transaction_id"),
         F.col("`amount (INR)`").cast("double").alias("amount"),
         F.to_timestamp("timestamp").alias("transaction_time"),
-        # Use synthetic topologies if present, otherwise generate hashed IDs
-        F.coalesce(F.col("explicit_sender_id"), F.concat(F.lit("sender_"), F.abs(F.hash(F.col("`transaction id`"))) % 5000, F.lit("@upi"))).alias("sender_id"),
-        F.coalesce(F.col("explicit_receiver_id"), F.concat(F.lit("recv_"), F.abs(F.hash(F.reverse(F.col("`transaction id`")))) % 3000, F.lit("@upi"))).alias("receiver_id"),
+        # Generate hashed sender/receiver IDs from transaction ID
+        F.concat(F.lit("sender_"), (F.abs(F.hash(F.col("`transaction id`"))) % 5000).cast("string"), F.lit("@upi")).alias("sender_id"),
+        F.concat(F.lit("recv_"), (F.abs(F.hash(F.reverse(F.col("`transaction id`")))) % 3000).cast("string"), F.lit("@upi")).alias("receiver_id"),
         F.lit("").alias("sender_name"),
         F.lit("").alias("receiver_name"),
         F.col("merchant_category").cast("string").alias("category"),

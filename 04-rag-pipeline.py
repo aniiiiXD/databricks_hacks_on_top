@@ -225,6 +225,29 @@ print("RAG config saved.")
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 7. Log to MLflow
+
+# COMMAND ----------
+
+import mlflow
+mlflow.set_tracking_uri("databricks")
+mlflow.set_registry_uri("databricks")
+
+with mlflow.start_run(run_name="rag_pipeline"):
+    mlflow.log_param("embedding_model", "intfloat/multilingual-e5-small")
+    mlflow.log_param("embedding_dims", 384)
+    mlflow.log_param("index_type", "FAISS_IndexFlatIP")
+    mlflow.log_param("top_k", 5)
+    mlflow.log_param("chunk_method", "AGGREGATE_4000chars")
+    mlflow.log_metric("circulars_indexed", len(chunks_pdf["circular_id"].unique()))
+    mlflow.log_metric("chunks_created", len(chunks_pdf))
+    mlflow.log_metric("avg_chunk_length", int(chunks_pdf["chunk_text"].str.len().mean()))
+    mlflow.log_metric("languages_supported", 22)
+print("✅ MLflow logged: rag_pipeline")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Complete
 # MAGIC
 # MAGIC **Next:** Run `05-loan-eligibility.py`
