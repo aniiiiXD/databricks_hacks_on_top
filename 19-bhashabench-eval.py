@@ -13,11 +13,34 @@ dbutils.widgets.text("schema", "main", "Schema Name")
 catalog = dbutils.widgets.get("catalog")
 schema = dbutils.widgets.get("schema")
 
-from databricks.sdk import WorkspaceClient
 from pyspark.sql import functions as F
 import json
+import requests
 
-w = WorkspaceClient()
+# Use REST API directly — SDK has compatibility issues on Free Edition
+db_host = spark.conf.get("spark.databricks.workspaceUrl", "")
+db_token = dbutils.notebook.entry_point.getDbUtils().notebook().getContext().apiToken().get()
+
+def ask_llm(question, system_prompt="You are a financial expert specializing in Indian banking, UPI, and RBI regulations. Answer concisely in 2-3 sentences."):
+    """Query Foundation Model API via REST."""
+    try:
+        resp = requests.post(
+            f"https://{db_host}/serving-endpoints/databricks-llama-4-maverick/invocations",
+            headers={"Authorization": f"Bearer {db_token}"},
+            json={
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": question}
+                ],
+                "max_tokens": 200,
+                "temperature": 0.1
+            },
+            timeout=60
+        )
+        data = resp.json()
+        return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    except Exception as e:
+        return f"ERROR: {e}"
 
 # COMMAND ----------
 
@@ -75,42 +98,33 @@ print(f"  Categories: {set(q['category'] for q in eval_questions)}")
 results = []
 for q in eval_questions:
     print(f"  Testing {q['id']}: {q['question'][:50]}...")
-    try:
-        response = w.serving_endpoints.query(
-            name="databricks-llama-4-maverick",
-            messages=[
-                {"role": "system", "content": "You are a financial expert specializing in Indian banking, UPI, and RBI regulations. Answer concisely in 2-3 sentences."},
-                {"role": "user", "content": q["question"]}
-            ],
-            max_tokens=200,
-            temperature=0.1
-        )
-        answer = response.choices[0].message.content
 
-        # Score: did the model respond in the right language?
-        has_hindi = any('\u0900' <= c <= '\u097F' for c in answer)
-        language_correct = (q["language"] == "hindi" and has_hindi) or (q["language"] == "english" and not has_hindi)
+    # For Hindi questions, add language instruction
+    if q["language"] == "hindi":
+        system = "You are a financial expert. Answer in Hindi (Devanagari script). Be concise, 2-3 sentences."
+    else:
+        system = "You are a financial expert specializing in Indian banking, UPI, and RBI regulations. Answer concisely in 2-3 sentences."
 
-        # Score: is the response substantive (not empty/error)?
-        is_substantive = len(answer.strip()) > 20
+    answer = ask_llm(q["question"], system)
 
-        results.append({
-            "id": q["id"],
-            "category": q["category"],
-            "language": q["language"],
-            "question": q["question"],
-            "answer": answer[:300],
-            "language_correct": language_correct,
-            "is_substantive": is_substantive,
-            "answer_length": len(answer),
-            "score": 1.0 if (language_correct and is_substantive) else 0.5 if is_substantive else 0.0
-        })
-    except Exception as e:
-        results.append({
-            "id": q["id"], "category": q["category"], "language": q["language"],
-            "question": q["question"], "answer": f"ERROR: {e}",
-            "language_correct": False, "is_substantive": False, "answer_length": 0, "score": 0.0
-        })
+    # Score: did the model respond in the right language?
+    has_hindi = any('\u0900' <= c <= '\u097F' for c in answer)
+    language_correct = (q["language"] == "hindi" and has_hindi) or (q["language"] == "english" and not has_hindi)
+
+    # Score: is the response substantive (not empty/error)?
+    is_substantive = len(answer.strip()) > 20 and not answer.startswith("ERROR")
+
+    results.append({
+        "id": q["id"],
+        "category": q["category"],
+        "language": q["language"],
+        "question": q["question"],
+        "answer": answer[:300],
+        "language_correct": language_correct,
+        "is_substantive": is_substantive,
+        "answer_length": len(answer),
+        "score": 1.0 if (language_correct and is_substantive) else 0.5 if is_substantive else 0.0
+    })
 
 print(f"\nCompleted {len(results)} evaluations.")
 
