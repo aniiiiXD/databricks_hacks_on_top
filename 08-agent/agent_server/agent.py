@@ -337,8 +337,8 @@ def check_loan_eligibility(
 # MCP TOOL LOADING
 # ============================================================
 
-def _load_mcp_tools() -> list:
-    """Load MCP tools from Databricks Vector Search and Genie Space. Graceful degradation if unavailable."""
+async def _load_mcp_tools_async() -> list:
+    """Load MCP tools from Databricks Vector Search and Genie Space (async). Graceful degradation."""
     tools = []
     try:
         w = get_user_workspace_client()
@@ -347,30 +347,49 @@ def _load_mcp_tools() -> list:
         logger.warning(f"Cannot connect to Databricks workspace for MCP tools: {e}")
         return tools
 
-    # Vector Search MCP — RBI circular retrieval
+    # Vector Search MCP
     vs_url = f"{host}/api/2.0/mcp/vector-search/{CATALOG}/{SCHEMA}/circular_chunks_vs_index"
     try:
         vs_server = DatabricksMCPServer(name="circular-search", url=vs_url, workspace_client=w)
-        vs_tools = DatabricksMultiServerMCPClient([vs_server]).get_tools()
+        vs_client = DatabricksMultiServerMCPClient([vs_server])
+        vs_tools = await vs_client.get_tools()
         tools.extend(vs_tools)
         logger.info(f"Vector Search MCP loaded: {[t.name for t in vs_tools]}")
     except Exception as e:
-        logger.warning(f"Vector Search MCP unavailable — RBI circular search will not work: {e}")
+        logger.warning(f"Vector Search MCP unavailable: {e}")
 
-    # Genie MCP — financial analytics
+    # Genie MCP
     if GENIE_SPACE_ID:
         genie_url = f"{host}/api/2.0/mcp/genie/{GENIE_SPACE_ID}"
         try:
             genie_server = DatabricksMCPServer(name="financial-analytics", url=genie_url, workspace_client=w)
-            genie_tools = DatabricksMultiServerMCPClient([genie_server]).get_tools()
+            genie_client = DatabricksMultiServerMCPClient([genie_server])
+            genie_tools = await genie_client.get_tools()
             tools.extend(genie_tools)
             logger.info(f"Genie MCP loaded: {[t.name for t in genie_tools]}")
         except Exception as e:
-            logger.warning(f"Genie MCP unavailable — analytics queries will not work: {e}")
+            logger.warning(f"Genie MCP unavailable: {e}")
     else:
         logger.warning("GENIE_SPACE_ID not set — financial analytics tool unavailable")
 
     return tools
+
+
+def _load_mcp_tools() -> list:
+    """Sync wrapper for async MCP tool loading."""
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Already in async context — can't use asyncio.run
+            import nest_asyncio
+            nest_asyncio.apply()
+            return loop.run_until_complete(_load_mcp_tools_async())
+        else:
+            return asyncio.run(_load_mcp_tools_async())
+    except Exception as e:
+        logger.warning(f"MCP tool loading failed: {e}")
+        return []
 
 
 # ============================================================
@@ -413,8 +432,28 @@ async def handle_invoke(request: ResponsesAgentRequest) -> ResponsesAgentRespons
     session_id = get_session_id(request)
     config = {"configurable": {"thread_id": session_id}}
 
-    chat_input = to_chat_completions_input(request)
-    user_message = chat_input["messages"][-1]["content"] if chat_input["messages"] else ""
+    # Extract user message — handle multiple input formats
+    user_message = ""
+    try:
+        chat_input = to_chat_completions_input(request)
+        user_message = chat_input["messages"][-1]["content"] if chat_input["messages"] else ""
+    except (AttributeError, TypeError, KeyError):
+        # Fallback: extract from request.input directly
+        if hasattr(request, "input") and request.input:
+            inp = request.input
+            if isinstance(inp, list):
+                for item in reversed(inp):
+                    if isinstance(item, dict) and item.get("role") == "user":
+                        user_message = item.get("content", "")
+                        break
+                    elif isinstance(item, (list, tuple)) and len(item) >= 1:
+                        user_message = str(item[0]) if isinstance(item, tuple) else str(item[-1])
+                        break
+            elif isinstance(inp, str):
+                user_message = inp
+
+    if not user_message:
+        return ResponsesAgentResponse.from_text("I didn't receive a message. Please try again.")
 
     try:
         result = await agent.ainvoke(
@@ -445,8 +484,20 @@ async def handle_stream(request: ResponsesAgentRequest):
     session_id = get_session_id(request)
     config = {"configurable": {"thread_id": session_id}}
 
-    chat_input = to_chat_completions_input(request)
-    user_message = chat_input["messages"][-1]["content"] if chat_input["messages"] else ""
+    user_message = ""
+    try:
+        chat_input = to_chat_completions_input(request)
+        user_message = chat_input["messages"][-1]["content"] if chat_input["messages"] else ""
+    except (AttributeError, TypeError, KeyError):
+        if hasattr(request, "input") and request.input:
+            inp = request.input
+            if isinstance(inp, list):
+                for item in reversed(inp):
+                    if isinstance(item, dict) and item.get("role") == "user":
+                        user_message = item.get("content", "")
+                        break
+            elif isinstance(inp, str):
+                user_message = inp
 
     try:
         async for event in agent.astream(
