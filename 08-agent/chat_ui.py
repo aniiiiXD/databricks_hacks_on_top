@@ -169,39 +169,30 @@ def get_kpis():
 def get_fraud_heatmap():
     """Hour x Day fraud heatmap."""
     cols, rows = query_sql("""
-    SELECT hour_of_day, day_of_week, fraud_rate_pct, total_txns, avg_fraud_risk
+    SELECT hour_of_day, day_of_week, fraud_count, total_txns
     FROM digital_artha.main.viz_fraud_heatmap
     ORDER BY day_of_week, hour_of_day
     """)
     if not rows:
         return go.Figure().update_layout(title="No heatmap data", **PLOTLY_LAYOUT)
 
+    day_map = {"Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6}
     day_names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-    # Build 7x24 matrix
-    matrix = [[0.0]*24 for _ in range(7)]
-    hover = [["" for _ in range(24)] for _ in range(7)]
+    matrix = [[0]*24 for _ in range(7)]
     for row in rows:
         h = _safe_int(row[0])
-        d = _safe_int(row[1])
-        rate = _safe_float(row[2])
-        txns = _safe_int(row[3])
+        d_str = str(row[1]).strip()
+        d = day_map.get(d_str, _safe_int(row[1]))
+        count = _safe_int(row[2])
         if 0 <= h < 24 and 0 <= d < 7:
-            matrix[d][h] = rate
-            hover[d][h] = f"Day: {day_names[d]}<br>Hour: {h}:00<br>Fraud Rate: {rate}%<br>Txns: {txns}"
+            matrix[d][h] = count
 
     fig = go.Figure(data=go.Heatmap(
         z=matrix, x=list(range(24)), y=day_names,
-        text=hover, hoverinfo="text",
         colorscale=[[0, "#0a0a0a"], [0.3, "#2a1a08"], [0.6, "#c5a059"], [1, "#ff4444"]],
-        colorbar=dict(title="Fraud %", tickfont=dict(color=TEXT_DIM)),
+        colorbar=dict(title="Frauds", tickfont=dict(color=TEXT_DIM)),
     ))
-    fig.update_layout(
-        title="Fraud Heatmap: Hour x Day of Week",
-        xaxis_title="Hour of Day", yaxis_title="",
-        xaxis=dict(dtick=2, gridcolor=GRID),
-        yaxis=dict(gridcolor=GRID),
-        **PLOTLY_LAYOUT,
-    )
+    fig.update_layout(title="Fraud Density: Hour × Day", xaxis_title="Hour", yaxis_title="", **PLOTLY_LAYOUT)
     return fig
 
 
@@ -446,27 +437,108 @@ def drill_sender_txns(sender_id):
 
 def get_fraud_rings():
     cols, rows = query_sql("""
-    SELECT ring_id, size, fraud_transactions AS fraud_txns,
-           ROUND(fraud_rate, 2) AS fraud_rate, ROUND(avg_risk_score, 3) AS avg_risk,
-           ROUND(density, 2) AS density, severity, ROUND(total_amount, 0) AS total_amount
-    FROM digital_artha.main.platinum_fraud_rings
-    WHERE size >= 3
-    ORDER BY fraud_rate DESC, size DESC LIMIT 20
+    SELECT ring_id, accounts AS size, total_transactions AS txns,
+           ROUND(fraud_rate, 2) AS fraud_rate,
+           ROUND(density, 3) AS density, has_cycles,
+           ROUND(total_amount, 0) AS total_amount
+    FROM digital_artha.main.detected_fraud_rings
+    WHERE accounts >= 3
+    ORDER BY total_amount DESC LIMIT 20
     """)
     if not rows:
         return "No fraud rings detected."
-    md = "**Detected Fraud Rings** (graph analysis: connected components + PageRank)\n\n"
+    md = "**Detected Fraud Rings** (NetworkX: connected components + cycle detection)\n\n"
     md += make_table(cols, rows)
     return md
 
 
+def get_ring_network_graph():
+    """Build a Plotly network graph from fraud ring edge data."""
+    cols, rows = query_sql("""
+    SELECT source, target, weight, volume
+    FROM digital_artha.main.viz_fraud_ring_edges
+    ORDER BY weight DESC
+    LIMIT 200
+    """)
+    if not rows:
+        return go.Figure().update_layout(title="No ring edge data", **PLOTLY_LAYOUT)
+
+    import math
+    # Build adjacency
+    nodes = set()
+    edges = []
+    for row in rows:
+        src, tgt = str(row[0]), str(row[1])
+        w = _safe_int(row[2], 1)
+        vol = _safe_float(row[3])
+        nodes.add(src)
+        nodes.add(tgt)
+        edges.append((src, tgt, w, vol))
+
+    # Layout: circular with some randomization
+    node_list = sorted(nodes)
+    n = len(node_list)
+    pos = {}
+    for i, node in enumerate(node_list):
+        angle = 2 * math.pi * i / n
+        r = 1.0 + (hash(node) % 100) / 200.0  # slight randomization
+        pos[node] = (r * math.cos(angle), r * math.sin(angle))
+
+    # Edge traces
+    edge_x, edge_y = [], []
+    for src, tgt, w, vol in edges:
+        x0, y0 = pos[src]
+        x1, y1 = pos[tgt]
+        edge_x += [x0, x1, None]
+        edge_y += [y0, y1, None]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=edge_x, y=edge_y, mode='lines',
+        line=dict(width=0.5, color='rgba(197,160,89,0.3)'),
+        hoverinfo='none'
+    ))
+
+    # Node trace
+    node_x = [pos[n][0] for n in node_list]
+    node_y = [pos[n][1] for n in node_list]
+    # Color by degree
+    degree = {}
+    for src, tgt, w, vol in edges:
+        degree[src] = degree.get(src, 0) + w
+        degree[tgt] = degree.get(tgt, 0) + w
+    node_colors = [degree.get(n, 0) for n in node_list]
+    node_sizes = [max(4, min(20, degree.get(n, 0) * 2)) for n in node_list]
+    node_text = [f"{n}<br>Connections: {degree.get(n, 0)}" for n in node_list]
+
+    fig.add_trace(go.Scatter(
+        x=node_x, y=node_y, mode='markers',
+        marker=dict(
+            size=node_sizes,
+            color=node_colors,
+            colorscale=[[0, "#2a1a08"], [0.5, "#c5a059"], [1, "#ff4444"]],
+            colorbar=dict(title="Degree", tickfont=dict(color=TEXT_DIM)),
+            line=dict(width=0.5, color='rgba(255,255,255,0.1)')
+        ),
+        text=node_text, hoverinfo='text'
+    ))
+
+    fig.update_layout(
+        title=f"Fraud Ring Network ({n} accounts, {len(edges)} connections)",
+        showlegend=False,
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        **PLOTLY_LAYOUT
+    )
+    return fig
+
+
 def get_ring_members(ring_id):
-    """Show members of a specific fraud ring."""
     if not ring_id:
         return "Enter a ring ID above."
     cols, rows = query_sql(f"""
-    SELECT ring_id, members, size, severity, ROUND(fraud_rate, 2) AS fraud_rate
-    FROM digital_artha.main.platinum_fraud_rings
+    SELECT ring_id, members, accounts AS size, has_cycles, ROUND(fraud_rate, 2) AS fraud_rate
+    FROM digital_artha.main.detected_fraud_rings
     WHERE ring_id = '{ring_id}'
     """)
     if not rows:
@@ -474,7 +546,7 @@ def get_ring_members(ring_id):
     r = rows[0]
     members_str = str(r[1]) if r[1] else "N/A"
     members_list = [m.strip() for m in members_str.split(",") if m.strip()]
-    md = f"### Ring `{r[0]}` — {r[2]} members | Severity: **{r[3]}** | Fraud Rate: **{r[4]}**\n\n"
+    md = f"### Ring `{r[0]}` — {r[2]} accounts | Cycles: **{r[3]}** | Fraud Rate: **{r[4]}**\n\n"
     md += "**Members:**\n"
     for m in members_list[:30]:
         md += f"- `{m}`\n"
@@ -866,12 +938,16 @@ with gr.Blocks(title="BlackIce Platform") as demo:
             gr.Markdown("---")
 
             # ----- FRAUD RINGS -----
-            gr.Markdown("### Fraud Ring Detection")
+            gr.Markdown("### Fraud Ring Network")
             gr.Markdown("*Graph analysis: Connected components + PageRank on transaction network*")
+            ring_graph_plot = gr.Plot(label="Ring Network Graph")
+            ring_graph_btn = gr.Button("Load Network Graph", variant="primary")
+            ring_graph_btn.click(fn=get_ring_network_graph, outputs=ring_graph_plot)
+
             with gr.Row():
-                rings_btn = gr.Button("Load Fraud Rings", variant="primary")
-                ring_id_input = gr.Textbox(label="Ring ID (copy from table)", placeholder="e.g. ring_0")
-                ring_members_btn = gr.Button("Show Members", variant="secondary")
+                rings_btn = gr.Button("Show Ring Table", variant="secondary", size="sm")
+                ring_id_input = gr.Textbox(label="Ring ID", placeholder="e.g. RING_0001", scale=2)
+                ring_members_btn = gr.Button("Show Members", variant="secondary", size="sm")
             rings_out = gr.Markdown()
             ring_members_out = gr.Markdown()
             rings_btn.click(fn=get_fraud_rings, outputs=rings_out)
