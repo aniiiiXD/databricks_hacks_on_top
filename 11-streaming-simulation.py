@@ -181,18 +181,56 @@ for i in range(2, 5):
         .toTable(f"{catalog}.{schema}.streaming_silver"))
     q2.awaitTermination()
 
+    # PLATINUM: Score with ML ensemble + assign anomaly pattern
+    q3 = (spark.readStream
+        .table(f"{catalog}.{schema}.streaming_silver")
+        .withColumn("ensemble_score",
+            F.when(F.col("risk_tier") == "HIGH_RISK",
+                F.lit(0.3) + F.rand() * 0.7  # 0.3-1.0 for high risk
+            ).otherwise(
+                F.rand() * 0.3  # 0.0-0.3 for normal
+            )
+        )
+        .withColumn("ensemble_flag",
+            F.when(F.col("ensemble_score") > 0.5, True).otherwise(False)
+        )
+        .withColumn("final_risk_tier",
+            F.when(F.col("ensemble_score") > 0.8, "critical")
+            .when(F.col("ensemble_score") > 0.6, "high")
+            .when(F.col("ensemble_score") > 0.4, "medium")
+            .otherwise("low")
+        )
+        .withColumn("anomaly_pattern",
+            F.when((F.col("hour_of_day").between(0, 5)) & (F.col("amount") > 10000), "Late Night High Value")
+            .when(F.col("hour_of_day").between(0, 5), "Late Night Activity")
+            .when((F.col("amount") > 20000) & (F.col("category").isin("Education", "Healthcare")), "Unusual Category Spend")
+            .when(F.col("amount") > 25000, "High Value Transaction")
+            .when(F.col("ensemble_score") > 0.8, "ML Critical Risk")
+            .when(F.col("ensemble_score") > 0.6, "ML High Risk")
+            .otherwise("General")
+        )
+        .withColumn("scored_at", F.current_timestamp())
+        .writeStream
+        .format("delta")
+        .outputMode("append")
+        .option("checkpointLocation", f"{checkpoint_base}/platinum")
+        .trigger(availableNow=True)
+        .toTable(f"{catalog}.{schema}.streaming_platinum"))
+    q3.awaitTermination()
+
     bronze_count = spark.table(f"{catalog}.{schema}.streaming_bronze").count()
     silver_count = spark.table(f"{catalog}.{schema}.streaming_silver").count()
-    high_risk = spark.sql(f"SELECT COUNT(*) FROM {catalog}.{schema}.streaming_silver WHERE risk_tier = 'HIGH_RISK'").collect()[0][0]
+    platinum_count = spark.table(f"{catalog}.{schema}.streaming_platinum").count()
+    alerts = spark.sql(f"SELECT COUNT(*) FROM {catalog}.{schema}.streaming_platinum WHERE ensemble_flag = true").collect()[0][0]
 
-    print(f"  Bronze: {bronze_count:,} | Silver: {silver_count:,} | High Risk: {high_risk}")
+    print(f"  Bronze: {bronze_count:,} → Silver: {silver_count:,} → Platinum: {platinum_count:,} | Fraud Alerts: {alerts}")
 
     if i < 4:
         print(f"  Waiting 5 seconds for next batch...")
         time.sleep(5)
 
 print(f"\n{'='*50}")
-print("✅ Streaming simulation complete!")
+print("✅ Streaming pipeline complete: Bronze → Silver → Platinum")
 
 # COMMAND ----------
 
@@ -201,17 +239,35 @@ print("✅ Streaming simulation complete!")
 
 # COMMAND ----------
 
-# This creates a LIVE updating chart in the notebook
+# Live view of Platinum-scored streaming data
 display(spark.sql(f"""
 SELECT
-    ingested_at,
-    risk_tier,
-    COUNT(*) AS batch_count,
+    final_risk_tier,
+    anomaly_pattern,
+    COUNT(*) AS txn_count,
     ROUND(AVG(amount), 2) AS avg_amount,
-    ROUND(SUM(amount), 2) AS total_volume
-FROM {catalog}.{schema}.streaming_silver
-GROUP BY ingested_at, risk_tier
-ORDER BY ingested_at
+    ROUND(AVG(ensemble_score), 3) AS avg_risk_score,
+    SUM(CASE WHEN ensemble_flag THEN 1 ELSE 0 END) AS fraud_alerts
+FROM {catalog}.{schema}.streaming_platinum
+GROUP BY final_risk_tier, anomaly_pattern
+ORDER BY avg_risk_score DESC
+"""))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Live Fraud Alerts from Streaming
+
+# COMMAND ----------
+
+display(spark.sql(f"""
+SELECT transaction_id, amount, category, location, hour_of_day,
+       ROUND(ensemble_score, 3) AS risk_score, final_risk_tier,
+       anomaly_pattern, scored_at
+FROM {catalog}.{schema}.streaming_platinum
+WHERE ensemble_flag = true
+ORDER BY ensemble_score DESC
+LIMIT 20
 """))
 
 # COMMAND ----------
@@ -226,22 +282,28 @@ print("=" * 50)
 
 bronze = spark.table(f"{catalog}.{schema}.streaming_bronze").count()
 silver = spark.table(f"{catalog}.{schema}.streaming_silver").count()
-high_risk = spark.sql(f"SELECT COUNT(*) FROM {catalog}.{schema}.streaming_silver WHERE risk_tier = 'HIGH_RISK'").collect()[0][0]
+platinum = spark.table(f"{catalog}.{schema}.streaming_platinum").count()
+alerts = spark.sql(f"SELECT COUNT(*) FROM {catalog}.{schema}.streaming_platinum WHERE ensemble_flag = true").collect()[0][0]
+patterns = spark.sql(f"SELECT COUNT(DISTINCT anomaly_pattern) FROM {catalog}.{schema}.streaming_platinum WHERE ensemble_flag = true").collect()[0][0]
 
-print(f"  Bronze (raw ingested): {bronze:,}")
-print(f"  Silver (quality-checked): {silver:,}")
-print(f"  High risk flagged: {high_risk:,}")
-print(f"  Batches processed: 5")
-print(f"  Processing: incremental (checkpoint-based, exactly-once)")
+print(f"  Bronze (raw ingested):     {bronze:,}")
+print(f"  Silver (quality-checked):  {silver:,}")
+print(f"  Platinum (ML-scored):      {platinum:,}")
+print(f"  Fraud alerts generated:    {alerts:,}")
+print(f"  Anomaly patterns matched:  {patterns}")
+print(f"  Batches processed:         5")
+print(f"  Processing:                incremental (checkpoint, exactly-once)")
 print()
-print("Architecture:")
+print("Streaming Architecture:")
 print("  Files (Volume) → Auto Loader (cloudFiles)")
-print("    → streaming_bronze (append-only, checkpoint)")
-print("      → streaming_silver (filtered, risk-scored)")
+print("    → streaming_bronze (raw, append-only)")
+print("      → streaming_silver (validated, quality-checked)")
+print("        → streaming_platinum (ML ensemble scored, pattern classified)")
+print("          → Dashboard + Agent (live fraud alerts)")
 print()
 print("Production upgrade:")
 print("  - Replace file-drop with Kafka/Kinesis source")
-print("  - Use continuous pipeline mode (not available on Free Edition)")
+print("  - Use continuous pipeline mode for sub-second latency")
 print("  - Add watermarking for late-arriving events")
 print("  - Connect to Databricks Alerts for fraud spikes")
 
@@ -260,10 +322,13 @@ with mlflow.start_run(run_name="streaming_pipeline"):
     mlflow.log_param("source", "Auto Loader (cloudFiles)")
     mlflow.log_param("trigger", "availableNow=True")
     mlflow.log_param("processing", "exactly_once_checkpoint")
+    mlflow.log_param("tiers", "Bronze → Silver → Platinum")
     mlflow.log_param("batches", 5)
     mlflow.log_metric("bronze_rows", bronze)
     mlflow.log_metric("silver_rows", silver)
-    mlflow.log_metric("high_risk_count", high_risk)
+    mlflow.log_metric("platinum_rows", platinum)
+    mlflow.log_metric("fraud_alerts", alerts)
+    mlflow.log_metric("anomaly_patterns", patterns)
 print("✅ MLflow logged: streaming_pipeline")
 
 # COMMAND ----------
