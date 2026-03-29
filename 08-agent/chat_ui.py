@@ -881,17 +881,26 @@ with gr.Blocks(title="BlackIce Platform") as demo:
             with gr.Row():
                 recov_btn = gr.Button("Show Recovery Steps", variant="primary")
                 chat_help_btn = gr.Button("Ask AI for Personalized Help", variant="secondary")
-            recov_out = gr.Markdown()
+            recov_out = gr.Markdown("*Select a fraud type above and click a button*")
             chat_help_out = gr.Markdown()
-            recov_btn.click(fn=get_recovery_guide, inputs=fraud_dd, outputs=recov_out)
+
+            def safe_recovery_guide(fraud_type):
+                result = get_recovery_guide(fraud_type)
+                if not result or result.strip() == "":
+                    return "No recovery steps found. Try selecting 'All Types'."
+                return result
 
             def ask_agent_recovery(fraud_type):
-                if fraud_type == "All Types":
-                    msg = "I was scammed. What should I do? Give me step by step recovery process."
+                if not fraud_type or fraud_type == "All Types":
+                    msg = "I was scammed. What should I do? Give me detailed step by step recovery process with RBI rules."
                 else:
-                    msg = f"I was scammed via {fraud_type}. What are the RBI rules and what should I do step by step?"
-                return call_agent(msg, [])
+                    msg = f"I was a victim of {fraud_type} fraud. What are the RBI liability rules? What should I do step by step? Who should I report to and what is the time limit?"
+                result = call_agent(msg, [])
+                if not result or result.strip() == "":
+                    return "Agent did not respond. Please try the 'Show Recovery Steps' button instead."
+                return f"### AI Agent Response\n\n{result}"
 
+            recov_btn.click(fn=safe_recovery_guide, inputs=fraud_dd, outputs=recov_out)
             chat_help_btn.click(fn=ask_agent_recovery, inputs=fraud_dd, outputs=chat_help_out)
 
         # ================================================================
