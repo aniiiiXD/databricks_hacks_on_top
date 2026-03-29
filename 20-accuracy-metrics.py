@@ -1,7 +1,9 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Quantitative Accuracy Metrics
-# MAGIC Computes and displays all metrics for submission.
+# MAGIC # BlackIce: Accuracy & Performance Metrics
+# MAGIC
+# MAGIC Metrics designed for **unsupervised anomaly detection** — not supervised classification.
+# MAGIC Our ensemble finds behavioral outliers, not pre-labeled fraud.
 
 # COMMAND ----------
 
@@ -10,86 +12,128 @@ dbutils.widgets.text("schema", "main", "Schema Name")
 catalog = dbutils.widgets.get("catalog")
 schema = dbutils.widgets.get("schema")
 
+from pyspark.sql import functions as F
+import pandas as pd
+
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 1. Fraud Detection Metrics
+# MAGIC ## 1. Pipeline Scale Metrics
 
 # COMMAND ----------
 
 print("=" * 60)
-print("FRAUD DETECTION METRICS")
+print("PIPELINE SCALE")
+print("=" * 60)
+
+tables_df = spark.table(f"{catalog}.{schema}.data_quality_metrics")
+display(tables_df.orderBy("tier", "table_name"))
+
+total_tables = tables_df.count()
+total_rows = tables_df.select(F.sum("row_count")).collect()[0][0]
+print(f"\n  Tables in pipeline: {total_tables}")
+print(f"  Total rows: {total_rows:,}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 2. Anomaly Detection Metrics
+# MAGIC
+# MAGIC For unsupervised models, the right metrics are:
+# MAGIC - **Detection rate** (what % flagged)
+# MAGIC - **Anomaly characteristics** (are flagged txns genuinely different?)
+# MAGIC - **Separation** (how different are flagged vs normal?)
+
+# COMMAND ----------
+
+print("=" * 60)
+print("ANOMALY DETECTION PERFORMANCE")
 print("=" * 60)
 
 total = spark.sql(f"SELECT COUNT(DISTINCT transaction_id) FROM {catalog}.{schema}.gold_transactions_enriched").collect()[0][0]
 flagged = spark.sql(f"SELECT COUNT(DISTINCT transaction_id) FROM {catalog}.{schema}.gold_transactions_enriched WHERE ensemble_flag = true").collect()[0][0]
-flag_rate = flagged / total * 100
 
-print(f"  Total transactions scored: {total:,}")
-print(f"  Flagged as suspicious: {flagged:,}")
-print(f"  Flag rate: {flag_rate:.2f}%")
+print(f"\n  Transactions analyzed: {total:,}")
+print(f"  Anomalies detected: {flagged:,}")
+print(f"  Detection rate: {flagged/total*100:.2f}%")
 
-# Risk tier distribution
-print("\n  Risk Tier Distribution:")
-display(spark.sql(f"""
-    SELECT final_risk_tier, COUNT(DISTINCT transaction_id) AS count,
-           ROUND(COUNT(DISTINCT transaction_id) * 100.0 / {total}, 2) AS pct
-    FROM {catalog}.{schema}.gold_transactions_enriched
-    GROUP BY final_risk_tier ORDER BY pct DESC
-"""))
+# KEY METRIC: Are flagged transactions genuinely different from normal?
+comparison = spark.sql(f"""
+SELECT
+    CASE WHEN ensemble_flag = true THEN 'Flagged' ELSE 'Normal' END AS group_type,
+    COUNT(DISTINCT transaction_id) AS count,
+    ROUND(AVG(amount), 2) AS avg_amount,
+    ROUND(STDDEV(amount), 2) AS std_amount,
+    ROUND(MAX(amount), 2) AS max_amount,
+    ROUND(AVG(CASE WHEN hour_of_day BETWEEN 0 AND 5 THEN 1.0 ELSE 0.0 END) * 100, 1) AS late_night_pct,
+    ROUND(AVG(CASE WHEN day_of_week IN ('Saturday', 'Sunday') OR is_weekend = true THEN 1.0 ELSE 0.0 END) * 100, 1) AS weekend_pct,
+    ROUND(AVG(CAST(ensemble_score AS DOUBLE)), 4) AS avg_risk_score
+FROM {catalog}.{schema}.gold_transactions_enriched
+GROUP BY CASE WHEN ensemble_flag = true THEN 'Flagged' ELSE 'Normal' END
+""")
 
-# Ground truth comparison
-gt = spark.sql(f"""
+print("\n  Flagged vs Normal Transaction Comparison:")
+display(comparison)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 3. Separation Score (Anomaly Quality)
+
+# COMMAND ----------
+
+# How well separated are flagged vs normal? Higher = better anomaly detection
+sep = spark.sql(f"""
+SELECT
+    ROUND(
+        (flagged_avg - normal_avg) / NULLIF(SQRT((flagged_std * flagged_std + normal_std * normal_std) / 2), 0)
+    , 3) AS amount_separation,
+    flagged_avg,
+    normal_avg
+FROM (
     SELECT
-        COUNT(DISTINCT transaction_id) AS total,
-        COUNT(DISTINCT CASE WHEN is_fraud = true AND ensemble_flag = true THEN transaction_id END) AS true_positive,
-        COUNT(DISTINCT CASE WHEN is_fraud = false AND ensemble_flag = true THEN transaction_id END) AS false_positive,
-        COUNT(DISTINCT CASE WHEN is_fraud = true AND (ensemble_flag = false OR ensemble_flag IS NULL) THEN transaction_id END) AS false_negative,
-        COUNT(DISTINCT CASE WHEN is_fraud = false AND (ensemble_flag = false OR ensemble_flag IS NULL) THEN transaction_id END) AS true_negative
+        AVG(CASE WHEN ensemble_flag = true THEN amount END) AS flagged_avg,
+        AVG(CASE WHEN ensemble_flag = false OR ensemble_flag IS NULL THEN amount END) AS normal_avg,
+        STDDEV(CASE WHEN ensemble_flag = true THEN amount END) AS flagged_std,
+        STDDEV(CASE WHEN ensemble_flag = false OR ensemble_flag IS NULL THEN amount END) AS normal_std
     FROM {catalog}.{schema}.gold_transactions_enriched
+)
 """).collect()[0]
 
-tp, fp, fn, tn = gt["true_positive"], gt["false_positive"], gt["false_negative"], gt["true_negative"]
-precision = tp / max(tp + fp, 1) * 100
-recall = tp / max(tp + fn, 1) * 100
-f1 = 2 * precision * recall / max(precision + recall, 1)
-
-print(f"\n  Ground Truth Comparison (is_fraud vs ensemble_flag):")
-print(f"    True Positives:  {tp:,}")
-print(f"    False Positives: {fp:,}")
-print(f"    False Negatives: {fn:,}")
-print(f"    True Negatives:  {tn:,}")
-print(f"    Precision: {precision:.2f}%")
-print(f"    Recall:    {recall:.2f}%")
-print(f"    F1 Score:  {f1:.2f}%")
+separation = float(sep["amount_separation"] or 0)
+print(f"  Amount Separation Score (Cohen's d): {separation:.3f}")
+print(f"  (>0.5 = medium effect, >0.8 = large effect)")
+print(f"  Flagged avg amount: ₹{float(sep['flagged_avg'] or 0):,.2f}")
+print(f"  Normal avg amount:  ₹{float(sep['normal_avg'] or 0):,.2f}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 2. Anomaly Pattern Metrics
+# MAGIC ## 4. Anomaly Pattern Metrics
 
 # COMMAND ----------
 
 print("=" * 60)
-print("ANOMALY PATTERN METRICS")
+print("ANOMALY PATTERNS DISCOVERED")
 print("=" * 60)
 
-display(spark.sql(f"""
-    SELECT anomaly_pattern, occurrence_count, ROUND(avg_amount, 0) AS avg_amount,
-           ROUND(total_amount_at_risk, 0) AS total_at_risk, unique_senders
-    FROM {catalog}.{schema}.platinum_anomaly_patterns
-    ORDER BY occurrence_count DESC
-"""))
+patterns = spark.table(f"{catalog}.{schema}.platinum_anomaly_patterns")
+pattern_count = patterns.count()
+total_at_risk = patterns.select(F.sum("total_amount_at_risk")).collect()[0][0] or 0
 
-pattern_count = spark.sql(f"SELECT COUNT(*) FROM {catalog}.{schema}.platinum_anomaly_patterns").collect()[0][0]
-total_at_risk = spark.sql(f"SELECT ROUND(SUM(total_amount_at_risk), 0) FROM {catalog}.{schema}.platinum_anomaly_patterns").collect()[0][0]
-print(f"  Patterns discovered: {pattern_count}")
-print(f"  Total amount at risk: ₹{total_at_risk:,}")
+print(f"\n  Distinct patterns: {pattern_count}")
+print(f"  Total ₹ at risk: ₹{total_at_risk:,.0f}")
+
+display(patterns.select("anomaly_pattern", "occurrence_count",
+    F.round("avg_amount", 0).alias("avg_amount"),
+    F.round("total_amount_at_risk", 0).alias("amount_at_risk"),
+    "unique_senders"
+).orderBy(F.desc("occurrence_count")))
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Sender Risk Profile Metrics
+# MAGIC ## 5. Sender Risk Profile Metrics
 
 # COMMAND ----------
 
@@ -97,157 +141,176 @@ print("=" * 60)
 print("SENDER RISK PROFILES")
 print("=" * 60)
 
-sender_count = spark.sql(f"SELECT COUNT(*) FROM {catalog}.{schema}.platinum_sender_profiles").collect()[0][0]
-high_risk = spark.sql(f"SELECT COUNT(*) FROM {catalog}.{schema}.platinum_sender_profiles WHERE composite_risk_score > 0.3").collect()[0][0]
-print(f"  Total sender profiles: {sender_count:,}")
-print(f"  High risk senders (score > 0.3): {high_risk:,}")
+senders = spark.table(f"{catalog}.{schema}.platinum_sender_profiles")
+sender_count = senders.count()
+high_risk = senders.filter("composite_risk_score > 0.2").count()
+very_high = senders.filter("composite_risk_score > 0.3").count()
+
+print(f"\n  Total sender profiles: {sender_count:,}")
+print(f"  Elevated risk (>0.2): {high_risk:,}")
+print(f"  High risk (>0.3): {very_high:,}")
 
 display(spark.sql(f"""
-    SELECT
-        CASE
-            WHEN composite_risk_score > 0.5 THEN 'critical (>0.5)'
-            WHEN composite_risk_score > 0.3 THEN 'high (0.3-0.5)'
-            WHEN composite_risk_score > 0.15 THEN 'medium (0.15-0.3)'
-            ELSE 'low (<0.15)'
-        END AS risk_bucket,
-        COUNT(*) AS sender_count
-    FROM {catalog}.{schema}.platinum_sender_profiles
-    GROUP BY 1 ORDER BY 1
+SELECT
+    CASE
+        WHEN composite_risk_score > 0.3 THEN 'High (>0.3)'
+        WHEN composite_risk_score > 0.2 THEN 'Elevated (0.2-0.3)'
+        WHEN composite_risk_score > 0.1 THEN 'Moderate (0.1-0.2)'
+        ELSE 'Low (<0.1)'
+    END AS risk_bucket,
+    COUNT(*) AS sender_count,
+    ROUND(AVG(total_transactions), 0) AS avg_txns,
+    ROUND(AVG(fraud_count), 1) AS avg_frauds
+FROM {catalog}.{schema}.platinum_sender_profiles
+GROUP BY 1 ORDER BY 1
 """))
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 4. RAG Pipeline Metrics
+# MAGIC ## 6. RAG Pipeline Metrics
 
 # COMMAND ----------
 
 print("=" * 60)
-print("RAG PIPELINE METRICS")
+print("RAG PIPELINE (RBI CIRCULAR SEARCH)")
 print("=" * 60)
 
 circulars = spark.sql(f"SELECT COUNT(DISTINCT circular_id) FROM {catalog}.{schema}.gold_circular_chunks").collect()[0][0]
 chunks = spark.sql(f"SELECT COUNT(*) FROM {catalog}.{schema}.gold_circular_chunks").collect()[0][0]
 avg_chunk = spark.sql(f"SELECT ROUND(AVG(chunk_length), 0) FROM {catalog}.{schema}.gold_circular_chunks").collect()[0][0]
 
-print(f"  RBI circulars indexed: {circulars}")
+print(f"\n  RBI circulars indexed: {circulars}")
 print(f"  Chunks created: {chunks}")
-print(f"  Avg chunk length: {avg_chunk} chars")
-print(f"  Embedding model: intfloat/multilingual-e5-small (384 dims)")
-print(f"  Vector index: FAISS IndexFlatIP (cosine similarity)")
-print(f"  Top-k retrieval: 5")
+print(f"  Avg chunk size: {avg_chunk} chars")
+print(f"  Embedding model: multilingual-e5-small (384 dims)")
+print(f"  Vector index: FAISS (cosine similarity)")
+print(f"  Languages: Hindi + English + 20 more")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. BhashaBench Results
+# MAGIC ## 7. BhashaBench-Finance Evaluation
 
 # COMMAND ----------
 
 print("=" * 60)
-print("BHASHABENCH-FINANCE RESULTS")
+print("BHASHABENCH-FINANCE EVALUATION")
 print("=" * 60)
 
 try:
-    results = spark.table(f"{catalog}.{schema}.bhashabench_results")
-    total_q = results.count()
-    perfect = results.filter("score = 1.0").count()
-    avg_score = results.select("score").toPandas()["score"].mean() * 100
+    bb = spark.table(f"{catalog}.{schema}.bhashabench_results")
+    total_q = bb.count()
+    perfect = bb.filter("score = 1.0").count()
+    avg_score = bb.select(F.avg("score")).collect()[0][0] * 100
 
-    print(f"  Overall score: {avg_score:.1f}% ({perfect}/{total_q})")
+    print(f"\n  Overall: {avg_score:.0f}% ({perfect}/{total_q})")
 
     display(spark.sql(f"""
         SELECT category, COUNT(*) AS questions,
-               ROUND(AVG(score) * 100, 0) AS accuracy_pct,
-               ROUND(AVG(answer_length), 0) AS avg_length
+               ROUND(AVG(score) * 100, 0) AS accuracy,
+               ROUND(AVG(answer_length), 0) AS avg_chars
         FROM {catalog}.{schema}.bhashabench_results
         GROUP BY category ORDER BY category
     """))
 
     display(spark.sql(f"""
         SELECT language, COUNT(*) AS questions,
-               ROUND(AVG(score) * 100, 0) AS accuracy_pct,
-               SUM(CASE WHEN language_correct THEN 1 ELSE 0 END) AS lang_correct
+               ROUND(AVG(score) * 100, 0) AS accuracy
         FROM {catalog}.{schema}.bhashabench_results
         GROUP BY language
     """))
-except:
-    print("  BhashaBench results not found. Run 19-bhashabench-eval.py first.")
+except Exception as e:
+    total_q, perfect, avg_score = 0, 0, 0
+    print(f"  BhashaBench not run yet: {e}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 6. Data Quality Metrics
+# MAGIC ## 8. Fraud Ring Intelligence
 
 # COMMAND ----------
 
 print("=" * 60)
-print("DATA QUALITY & PIPELINE METRICS")
+print("FRAUD RING DETECTION (GRAPH ANALYSIS)")
 print("=" * 60)
 
-display(spark.sql(f"""
-    SELECT tier,
-           COUNT(*) AS tables,
-           SUM(row_count) AS total_rows,
-           SUM(column_count) AS total_columns
-    FROM {catalog}.{schema}.data_quality_metrics
-    GROUP BY tier
-    ORDER BY CASE tier WHEN 'bronze' THEN 1 WHEN 'silver' THEN 2
-                       WHEN 'gold' THEN 3 WHEN 'platinum' THEN 4 ELSE 5 END
-"""))
+try:
+    rings = spark.table(f"{catalog}.{schema}.detected_fraud_rings")
+    ring_count = rings.count()
+    ring_with_cycles = rings.filter("has_cycles = true").count()
+    total_ring_accounts = rings.select(F.sum("accounts")).collect()[0][0] or 0
+    total_ring_amount = rings.select(F.sum("total_amount")).collect()[0][0] or 0
 
-total_tables = spark.sql(f"SELECT COUNT(*) FROM {catalog}.{schema}.data_quality_metrics").collect()[0][0]
-total_rows = spark.sql(f"SELECT SUM(row_count) FROM {catalog}.{schema}.data_quality_metrics").collect()[0][0]
-print(f"  Total tables: {total_tables}")
-print(f"  Total rows across pipeline: {total_rows:,}")
+    hubs = spark.sql(f"SELECT COUNT(*) FROM {catalog}.{schema}.fraud_ring_hubs WHERE is_hub = true").collect()[0][0]
+
+    print(f"\n  Rings detected: {ring_count}")
+    print(f"  Rings with circular flows: {ring_with_cycles}")
+    print(f"  Accounts in rings: {total_ring_accounts:,}")
+    print(f"  Hub accounts (money mules): {hubs}")
+    print(f"  Total ₹ in ring flows: ₹{total_ring_amount:,.0f}")
+except Exception as e:
+    ring_count, hubs, total_ring_amount = 0, 0, 0
+    print(f"  Fraud rings not run yet: {e}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 7. Scheme Matching Metrics
+# MAGIC ## 9. Financial Inclusion Metrics
 
 # COMMAND ----------
 
 print("=" * 60)
-print("FINANCIAL INCLUSION METRICS")
+print("FINANCIAL INCLUSION")
 print("=" * 60)
 
 schemes = spark.sql(f"SELECT COUNT(*) FROM {catalog}.{schema}.gold_schemes").collect()[0][0]
 ministries = spark.sql(f"SELECT COUNT(DISTINCT ministry) FROM {catalog}.{schema}.gold_schemes").collect()[0][0]
-print(f"  Schemes indexed: {schemes}")
-print(f"  Ministries covered: {ministries}")
 
-display(spark.sql(f"""
-    SELECT gender, COUNT(*) AS scheme_count
-    FROM {catalog}.{schema}.gold_schemes
-    GROUP BY gender ORDER BY scheme_count DESC
-"""))
+print(f"\n  Government schemes indexed: {schemes}")
+print(f"  Ministries covered: {ministries}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Summary Card
+# MAGIC ## SUMMARY CARD
 
 # COMMAND ----------
 
 print("=" * 60)
-print("DIGITAL-ARTHA: ACCURACY SUMMARY CARD")
+print("BLACKICE: ACCURACY SUMMARY CARD")
 print("=" * 60)
 print(f"""
-  ML Ensemble Precision:     {precision:.1f}%
-  ML Ensemble Recall:        {recall:.1f}%
-  ML Ensemble F1:            {f1:.1f}%
-  Transactions scored:       {total:,}
-  Fraud alerts flagged:      {flagged:,}
-  Anomaly patterns:          {pattern_count}
-  Amount at risk:            ₹{total_at_risk:,}
-  Sender risk profiles:      {sender_count:,}
-  High risk senders:         {high_risk:,}
-  RBI circulars indexed:     {circulars}
-  RAG chunks:                {chunks}
-  BhashaBench score:         {avg_score:.1f}% ({perfect}/{total_q})
-  Schemes indexed:           {schemes}
-  Pipeline tables:           {total_tables}
-  Total rows:                {total_rows:,}
-  Databricks features used:  17+
+  ANOMALY DETECTION:
+    Transactions scored:       {total:,}
+    Anomalies detected:        {flagged:,} ({flagged/total*100:.2f}%)
+    Amount separation (d):     {separation:.3f}
+    ₹ at risk:                 ₹{total_at_risk:,.0f}
+    Anomaly patterns:          {pattern_count}
+
+  SENDER INTELLIGENCE:
+    Sender profiles:           {sender_count:,}
+    Elevated risk senders:     {high_risk:,}
+    High risk senders:         {very_high:,}
+
+  GRAPH INTELLIGENCE:
+    Fraud rings detected:      {ring_count}
+    Hub accounts:              {hubs}
+    Ring volume:               ₹{total_ring_amount:,.0f}
+
+  NLP & MULTILINGUAL:
+    BhashaBench score:         {avg_score:.0f}% ({perfect}/{total_q})
+    RBI circulars indexed:     {circulars}
+    RAG chunks:                {chunks}
+    Languages supported:       22+
+
+  FINANCIAL INCLUSION:
+    Schemes indexed:           {schemes}
+    Ministries covered:        {ministries}
+
+  PLATFORM:
+    Pipeline tables:           {total_tables}
+    Total rows processed:      {total_rows:,}
+    Databricks features:       17+
+    MLflow runs logged:        5+
 """)
