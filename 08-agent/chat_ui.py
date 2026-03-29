@@ -664,7 +664,9 @@ def get_recovery_guide(fraud_type):
     if fraud_type == "All Types":
         where = ""
     else:
-        where = f"WHERE fraud_type = '{fraud_type}'"
+        # Use LIKE for flexible matching
+        search = fraud_type.replace("'", "''").split("/")[0].strip().split("(")[0].strip()
+        where = f"WHERE LOWER(fraud_type) LIKE LOWER('%{search}%')"
     cols, rows = query_sql(f"""
     SELECT fraud_type AS Type, rbi_rule AS 'RBI Rule',
            recovery_steps AS 'What To Do', report_to AS 'Report To',
@@ -860,16 +862,25 @@ with gr.Blocks(title="BlackIce Platform") as demo:
             gr.Markdown("### Fraud Recovery Guide")
             gr.Markdown("*Select your fraud type for RBI-mandated recovery steps:*")
             fraud_dd = gr.Dropdown(
-                ["All Types", "QR Code Scam", "Phishing / Fake Bank Call", "SIM Swap Fraud",
-                 "Fake UPI Collect Request", "Remote Access / Screen Sharing", "Fake Merchant / Refund Fraud"],
+                ["All Types", "QR Code", "Phishing", "SIM Swap",
+                 "Fake UPI", "Collect Request", "Remote Access", "Merchant Fraud", "Refund"],
                 value="All Types", label="Fraud Type"
             )
             with gr.Row():
                 recov_btn = gr.Button("Show Recovery Steps", variant="primary")
-                chat_jump_btn = gr.Button("Talk to AI Agent for Help", variant="secondary")
+                chat_help_btn = gr.Button("Ask AI for Personalized Help", variant="secondary")
             recov_out = gr.Markdown()
+            chat_help_out = gr.Markdown()
             recov_btn.click(fn=get_recovery_guide, inputs=fraud_dd, outputs=recov_out)
-            chat_jump_btn.click(fn=None, js="() => { const btns = Array.from(document.querySelectorAll('button')); const t = btns.find(b => b.innerText.includes('Ask BlackIce')); if(t) t.click(); }")
+
+            def ask_agent_recovery(fraud_type):
+                if fraud_type == "All Types":
+                    msg = "I was scammed. What should I do? Give me step by step recovery process."
+                else:
+                    msg = f"I was scammed via {fraud_type}. What are the RBI rules and what should I do step by step?"
+                return call_agent(msg, [])
+
+            chat_help_btn.click(fn=ask_agent_recovery, inputs=fraud_dd, outputs=chat_help_out)
 
         # ================================================================
         # TAB 1: COMMAND CENTER — KPIs + Alerts + Charts + Drill-downs
