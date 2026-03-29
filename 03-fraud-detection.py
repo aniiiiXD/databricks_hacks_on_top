@@ -336,34 +336,46 @@ ORDER BY avg_score DESC
 
 # COMMAND ----------
 
+# MLflow works on Free Edition IF you skip set_experiment()!
+# start_run() uses the default experiment automatically.
+import mlflow
+import mlflow.sklearn
+
 try:
-    import os
-    os.environ["MLFLOW_TRACKING_URI"] = "databricks"
-    import mlflow
-    import mlflow.sklearn
-
-    username = spark.sql("SELECT current_user()").collect()[0][0]
-    mlflow.set_experiment(f"/Users/{username}/digital-artha-fraud-detection")
-
     with mlflow.start_run(run_name="fraud_ensemble_final"):
+        # Log parameters
         mlflow.log_param("model_a", "IsolationForest")
         mlflow.log_param("model_b", "KMeans")
         mlflow.log_param("if_n_estimators", 300)
         mlflow.log_param("if_contamination", 0.02)
         mlflow.log_param("km_k", 8)
-        mlflow.log_param("ensemble_weights", f"IF=0.45,KM=0.30,AI=0.25")
+        mlflow.log_param("ensemble_weights", "IF=0.45,KM=0.30,AI=0.25")
+        mlflow.log_param("stratified_sampling", "all_fraud_preserved")
+        mlflow.log_param("feature_count", len(feature_cols))
+        mlflow.log_param("training_rows", len(pdf))
+
+        # Log metrics
         mlflow.log_metric("precision", precision)
         mlflow.log_metric("recall", recall)
         mlflow.log_metric("f1", f1)
         mlflow.log_metric("auc_roc", auc)
         mlflow.log_metric("total_flagged", int(pdf["ensemble_flag"].sum()))
+        mlflow.log_metric("total_scored", len(pdf))
+        mlflow.log_metric("flag_rate", float(pdf["ensemble_flag"].mean()))
+        mlflow.log_metric("anomaly_patterns", 8)
+
+        # Log models
         mlflow.sklearn.log_model(iforest, "isolation_forest")
         mlflow.sklearn.log_model(km, "kmeans")
         mlflow.sklearn.log_model(scaler, "scaler")
-    print("MLflow logging complete!")
+
+        run_id = mlflow.active_run().info.run_id
+
+    print(f"✅ MLflow logging complete! Run ID: {run_id}")
+    print(f"   View at: Experiments → Default → {run_id}")
 except Exception as e:
-    print(f"MLflow logging skipped (Free Edition limitation): {e}")
-    print("Training results are saved in Delta tables — all good.")
+    print(f"MLflow logging failed: {e}")
+    print("Training results are saved in Delta tables.")
 
 # COMMAND ----------
 
