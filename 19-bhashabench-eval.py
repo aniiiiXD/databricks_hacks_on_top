@@ -19,7 +19,24 @@ import requests
 
 # Use REST API directly — SDK has compatibility issues on Free Edition
 db_host = spark.conf.get("spark.databricks.workspaceUrl", "")
-db_token = dbutils.notebook.entry_point.getDbUtils().notebook().getContext().apiToken().get()
+
+# Get token — try multiple methods for serverless compatibility
+db_token = ""
+try:
+    db_token = dbutils.notebook.entry_point.getDbUtils().notebook().getContext().apiToken().get()
+except:
+    try:
+        db_token = dbutils.secrets.get(scope="default", key="token")
+    except:
+        pass
+
+if not db_token:
+    # Use Databricks SDK as fallback
+    from databricks.sdk import WorkspaceClient
+    w = WorkspaceClient()
+    db_host = w.config.host.replace("https://", "")
+    db_token = w.config.token
+    print(f"Using SDK auth: {db_host}")
 
 def ask_llm(question, system_prompt="You are a financial expert specializing in Indian banking, UPI, and RBI regulations. Answer concisely in 2-3 sentences."):
     """Query Foundation Model API via REST."""
