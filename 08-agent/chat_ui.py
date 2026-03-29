@@ -285,4 +285,6 @@ with gr.Blocks(title="Digital-Artha") as demo:
 
 
 if __name__ == "__main__":
-    demo.launch(server_port=7860, share=False)
+    demo.launch(server_port=7860, share=True)
+    # share=True creates a public URL like https://xxxxx.gradio.live
+    # Judges can open it on their phones during your presentation
