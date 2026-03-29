@@ -523,12 +523,13 @@ def get_ring_network_graph():
         text=node_text, hoverinfo='text'
     ))
 
+    layout = {**PLOTLY_LAYOUT}
+    layout["xaxis"] = dict(showgrid=False, zeroline=False, showticklabels=False)
+    layout["yaxis"] = dict(showgrid=False, zeroline=False, showticklabels=False)
     fig.update_layout(
         title=f"Fraud Ring Network ({n} accounts, {len(edges)} connections)",
         showlegend=False,
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        **PLOTLY_LAYOUT
+        **layout
     )
     return fig
 
