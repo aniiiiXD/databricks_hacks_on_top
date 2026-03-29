@@ -339,6 +339,9 @@ ORDER BY avg_score DESC
 import mlflow
 import mlflow.sklearn
 
+mlflow.set_tracking_uri("databricks")
+mlflow.set_registry_uri("databricks")
+
 with mlflow.start_run(run_name="fraud_ensemble_final"):
     mlflow.log_param("model_a", "IsolationForest")
     mlflow.log_param("model_b", "KMeans")
