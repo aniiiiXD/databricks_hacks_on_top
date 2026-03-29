@@ -84,50 +84,61 @@ print(f"Streaming sink ready: {catalog}.{schema}.live_fraud_scores")
 
 # COMMAND ----------
 
-# Clean old checkpoints
+# Simulate streaming by processing batches one at a time with delays
+# Free Edition doesn't support ProcessingTime trigger, so we use
+# availableNow in a loop — same visual effect for the demo
+
 try:
     dbutils.fs.rm(checkpoint_path, recurse=True)
 except:
     pass
 
-# Start streaming read from incoming directory
-stream_df = (spark.readStream
-    .format("cloudFiles")
-    .option("cloudFiles.format", "json")
-    .option("cloudFiles.inferColumnTypes", "true")
-    .option("cloudFiles.schemaLocation", f"{checkpoint_path}/schema")
-    .load(incoming_path))
+# First create the target table
+spark.sql(f"DROP TABLE IF EXISTS {catalog}.{schema}.live_fraud_scores")
 
-# Score each transaction in real-time
-scored_df = (stream_df
-    .select(
-        F.col("transaction_id").cast("string"),
-        F.col("amount").cast("double"),
-        F.col("category").cast("string"),
-        F.col("location").cast("string"),
-        F.col("hour_of_day").cast("int"),
-        F.col("ai_risk_label").cast("string"),
-        F.col("ai_risk_score").cast("double"),
-        F.current_timestamp().alias("scored_at"),
-        F.col("_metadata.file_path").alias("batch_id"),
-    ))
+print("Simulating real-time scoring...")
+print("Each batch is ingested → scored → written to live_fraud_scores\n")
 
-# Write with processingTime trigger — processes new files every 30 seconds
-query = (scored_df.writeStream
-    .format("delta")
-    .outputMode("append")
-    .option("checkpointLocation", f"{checkpoint_path}/live_scores")
-    .trigger(processingTime="30 seconds")
-    .toTable(f"{catalog}.{schema}.live_fraud_scores"))
+batch_files = [f.path for f in dbutils.fs.ls(incoming_path) if f.name.endswith(".json") or f.path.endswith("/")]
 
-print("Streaming started! New files will be scored every 30 seconds.")
-print("Watch the live_fraud_scores table grow.")
-print("Press Cancel/Stop to end the stream.")
+for i, batch_dir in enumerate(batch_files[:5]):  # Process 5 batches
+    print(f"--- Batch {i+1}/5 arriving... ---")
 
-# Wait for some batches to process
-time.sleep(120)  # Let it run for 2 minutes
-query.stop()
-print("Stream stopped after demo.")
+    # Read this batch
+    batch_df = spark.read.json(batch_dir)
+
+    # Score it
+    scored = (batch_df
+        .select(
+            F.col("transaction_id").cast("string"),
+            F.col("amount").cast("double"),
+            F.col("category").cast("string"),
+            F.col("location").cast("string"),
+            F.col("hour_of_day").cast("int"),
+            F.col("ai_risk_label").cast("string"),
+            F.col("ai_risk_score").cast("double"),
+            F.current_timestamp().alias("scored_at"),
+            F.lit(f"batch_{i:03d}").alias("batch_id"),
+        ))
+
+    # Append to live table
+    scored.write.mode("append").saveAsTable(f"{catalog}.{schema}.live_fraud_scores")
+
+    count = spark.table(f"{catalog}.{schema}.live_fraud_scores").count()
+    high_risk = spark.sql(f"""
+        SELECT COUNT(*) FROM {catalog}.{schema}.live_fraud_scores
+        WHERE ai_risk_label IN ('high', 'critical')
+    """).collect()[0][0]
+
+    print(f"  Scored: {scored.count()} transactions")
+    print(f"  Total in live table: {count:,}")
+    print(f"  High risk alerts: {high_risk}")
+
+    if i < 4:
+        print(f"  Waiting 10 seconds for next batch...\n")
+        time.sleep(10)
+
+print("\n✓ Streaming simulation complete!")
 
 # COMMAND ----------
 
