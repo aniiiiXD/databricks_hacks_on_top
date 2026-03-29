@@ -256,13 +256,14 @@ def get_monthly_trend():
         x=months, y=fraud_txns, name="Fraud Txns",
         marker_color="rgba(255,68,68,0.3)", yaxis="y2",
     ))
+    trend_layout = {**PLOTLY_LAYOUT}
+    trend_layout["yaxis"] = dict(title="Fraud Rate %", gridcolor=GRID, side="left")
     fig.update_layout(
         title="Monthly Fraud Trend",
         xaxis_title="Month",
-        yaxis=dict(title="Fraud Rate %", gridcolor=GRID, side="left"),
         yaxis2=dict(title="Fraud Txn Count", overlaying="y", side="right", gridcolor="rgba(0,0,0,0)"),
         legend=dict(font=dict(color=TEXT_DIM)),
-        **PLOTLY_LAYOUT,
+        **trend_layout,
     )
     return fig
 
@@ -495,30 +496,29 @@ def get_ring_network_graph():
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=edge_x, y=edge_y, mode='lines',
-        line=dict(width=0.5, color='rgba(197,160,89,0.3)'),
+        line=dict(width=0.8, color='rgba(100,180,255,0.25)'),
         hoverinfo='none'
     ))
 
-    # Node trace
+    # Node trace — bright colors against dark background
     node_x = [pos[n][0] for n in node_list]
     node_y = [pos[n][1] for n in node_list]
-    # Color by degree
     degree = {}
     for src, tgt, w, vol in edges:
         degree[src] = degree.get(src, 0) + w
         degree[tgt] = degree.get(tgt, 0) + w
     node_colors = [degree.get(n, 0) for n in node_list]
-    node_sizes = [max(4, min(20, degree.get(n, 0) * 2)) for n in node_list]
-    node_text = [f"{n}<br>Connections: {degree.get(n, 0)}" for n in node_list]
+    node_sizes = [max(6, min(25, degree.get(n, 0) * 3)) for n in node_list]
+    node_text = [f"<b>{n}</b><br>Connections: {degree.get(n, 0)}" for n in node_list]
 
     fig.add_trace(go.Scatter(
         x=node_x, y=node_y, mode='markers',
         marker=dict(
             size=node_sizes,
             color=node_colors,
-            colorscale=[[0, "#2a1a08"], [0.5, "#c5a059"], [1, "#ff4444"]],
-            colorbar=dict(title="Degree", tickfont=dict(color=TEXT_DIM)),
-            line=dict(width=0.5, color='rgba(255,255,255,0.1)')
+            colorscale=[[0, "#00cc88"], [0.3, "#00aaff"], [0.6, "#ff8800"], [1, "#ff2222"]],
+            colorbar=dict(title="Connections", tickfont=dict(color=TEXT_DIM)),
+            line=dict(width=1, color='rgba(255,255,255,0.3)')
         ),
         text=node_text, hoverinfo='text'
     ))
@@ -665,24 +665,35 @@ def get_recovery_guide(fraud_type):
     if fraud_type == "All Types":
         where = ""
     else:
-        # Use LIKE for flexible matching
         search = fraud_type.replace("'", "''").split("/")[0].strip().split("(")[0].strip()
         where = f"WHERE LOWER(fraud_type) LIKE LOWER('%{search}%')"
-    cols, rows = query_sql(f"""
-    SELECT fraud_type AS Type, rbi_rule AS 'RBI Rule',
-           recovery_steps AS 'What To Do', report_to AS 'Report To',
-           time_limit_days AS 'Days Limit', max_liability_inr AS 'Max Liability'
-    FROM digital_artha.main.viz_recovery_guide {where}
-    """)
+
+    # Try both table names (view and source)
+    for table in ["fraud_recovery_guide", "viz_recovery_guide"]:
+        cols, rows = query_sql(f"""
+        SELECT * FROM digital_artha.main.{table} {where}
+        """)
+        if rows and len(rows) > 0:
+            break
+
     if not rows:
-        return "No recovery guide found."
+        return f"No recovery guide found for '{fraud_type}'. Try 'All Types'."
+
     md = ""
     for row in rows:
-        md += f"### {row[0]}\n"
-        md += f"**RBI Rule:** {row[1]}\n\n"
-        md += f"**What to do:**\n{row[2]}\n\n"
-        md += f"**Report to:** {row[3]}\n\n"
-        md += f"**Time limit:** {row[4]} days | **Max liability:** \u20b9{row[5]}\n\n---\n\n"
+        row_dict = dict(zip(cols, row)) if cols else {}
+        fraud_name = row_dict.get("fraud_type", row_dict.get("Type", str(row[0])))
+        rbi_rule = row_dict.get("rbi_rule", row_dict.get("rbi_liability_rule", row_dict.get("RBI Rule", "")))
+        steps = row_dict.get("recovery_steps", row_dict.get("What To Do", ""))
+        report = row_dict.get("report_to", row_dict.get("Report To", ""))
+        days = row_dict.get("time_limit_days", row_dict.get("Days Limit", "3"))
+        liability = row_dict.get("max_liability_inr", row_dict.get("Max Liability", "0"))
+
+        md += f"### {fraud_name}\n"
+        md += f"**RBI Rule:** {rbi_rule}\n\n"
+        md += f"**Recovery Steps:**\n{steps}\n\n"
+        md += f"**Report to:** {report}\n\n"
+        md += f"**Time limit:** {days} days | **Max liability:** ₹{liability}\n\n---\n\n"
     return md
 
 
