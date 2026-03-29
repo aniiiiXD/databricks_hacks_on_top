@@ -265,3 +265,83 @@ with mlflow.start_run(run_name="streaming_pipeline"):
     mlflow.log_metric("silver_rows", silver)
     mlflow.log_metric("high_risk_count", high_risk)
 print("✅ MLflow logged: streaming_pipeline")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 8. LIVE TEST — Drop a Custom Transaction
+# MAGIC
+# MAGIC **Judges can modify this cell** to inject a custom transaction
+# MAGIC and verify the streaming pipeline processes it.
+
+# COMMAND ----------
+
+import json, uuid
+
+# CREATE A CUSTOM TRANSACTION — edit these values!
+custom_txn = {
+    "transaction_id": f"JUDGE_TEST_{uuid.uuid4().hex[:8]}",
+    "amount": 99999.99,
+    "transaction_time": "2024-06-15T23:45:00",
+    "category": "Education",
+    "location": "Delhi",
+    "hour_of_day": 23,
+    "ai_risk_label": "critical",
+    "ai_risk_score": 0.95,
+    "is_fraud": True,
+}
+
+# Write it as a new file in the incoming directory
+test_path = f"{incoming_path}judge_test/"
+dbutils.fs.mkdirs(test_path)
+dbutils.fs.put(f"{test_path}test.json", json.dumps(custom_txn), overwrite=True)
+print(f"Custom transaction written: {custom_txn['transaction_id']}")
+print(f"Amount: ₹{custom_txn['amount']:,.2f} | Risk: {custom_txn['ai_risk_label']} | Location: {custom_txn['location']}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 9. Process the Custom Transaction
+
+# COMMAND ----------
+
+# Re-run Auto Loader — picks up ONLY the new file
+q = (spark.readStream
+    .format("cloudFiles")
+    .option("cloudFiles.format", "json")
+    .option("cloudFiles.inferColumnTypes", "true")
+    .option("cloudFiles.schemaLocation", f"{checkpoint_base}/bronze_schema")
+    .load(incoming_path)
+    .select(
+        F.col("transaction_id").cast("string"),
+        F.col("amount").cast("double"),
+        F.col("transaction_time").cast("timestamp"),
+        F.col("category").cast("string"),
+        F.col("location").cast("string"),
+        F.col("hour_of_day").cast("integer"),
+        F.col("ai_risk_label").cast("string"),
+        F.col("ai_risk_score").cast("double"),
+        F.col("is_fraud").cast("boolean"),
+        F.current_timestamp().alias("ingested_at"),
+    )
+    .writeStream
+    .format("delta")
+    .outputMode("append")
+    .option("checkpointLocation", f"{checkpoint_base}/bronze")
+    .option("mergeSchema", "true")
+    .trigger(availableNow=True)
+    .toTable(f"{catalog}.{schema}.streaming_bronze"))
+q.awaitTermination()
+
+# Verify the custom transaction was ingested
+result = spark.sql(f"""
+    SELECT transaction_id, amount, category, ai_risk_label, ingested_at
+    FROM {catalog}.{schema}.streaming_bronze
+    WHERE transaction_id LIKE 'JUDGE_TEST%'
+""")
+
+if result.count() > 0:
+    print("✅ Custom transaction found in streaming_bronze!")
+    display(result)
+else:
+    print("❌ Transaction not found — check the file format")
