@@ -51,7 +51,16 @@ def call_agent(message, history):
     try:
         input_messages = []
         for h in history:
-            if isinstance(h, (list, tuple)) and len(h) == 2:
+            if isinstance(h, dict) and "role" in h:
+                # Gradio 6 messages format: {"role": "user"/"assistant", "content": "..."}
+                role = h["role"]
+                text = str(h.get("content", ""))
+                if role == "user":
+                    input_messages.append({"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]})
+                elif role == "assistant" and text:
+                    input_messages.append({"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": text}]})
+            elif isinstance(h, (list, tuple)) and len(h) == 2:
+                # Legacy tuples format fallback
                 input_messages.append({"type": "message", "role": "user", "content": [{"type": "input_text", "text": str(h[0])}]})
                 if h[1]:
                     input_messages.append({"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": str(h[1])}]})
@@ -354,7 +363,7 @@ theme = gr.themes.Monochrome(
     panel_background_fill="#060606"
 )
 
-with gr.Blocks(title="BlackIce Platform", theme=theme, css=custom_css) as demo:
+with gr.Blocks(title="BlackIce Platform") as demo:
 
     gr.Markdown("""
     <div style="padding: 50px 0 30px 0; max-width: 800px;">
@@ -447,7 +456,6 @@ with gr.Blocks(title="BlackIce Platform", theme=theme, css=custom_css) as demo:
             gr.Markdown("### Intelligent Agent Workspace — 7 Tools | Hindi Support | MCP Protocol")
             gr.ChatInterface(
                 fn=call_agent,
-                type="messages",
                 examples=[
                     "Show me the top 5 highest risk fraud alerts",
                     "I was scammed via QR code. What should I do?",
@@ -507,4 +515,4 @@ if __name__ == "__main__":
     print("="*55)
     print("\nInitializing Uplink with public URL...")
     print("Share the encrypted channel with judges!\n")
-    demo.launch(server_port=7860, share=True)
+    demo.launch(server_port=7860, share=True, theme=theme, css=custom_css)
