@@ -646,59 +646,55 @@ custom_css = """
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Montserrat:wght@300;400;500;600&family=Inter:wght@300;400;500&display=swap');
 
 body { font-family: 'Inter', sans-serif !important; font-weight: 300 !important; background: #060606 !important; }
-.gradio-container { max-width: 100% !important; padding: 120px 4% 0 !important; background: radial-gradient(circle at 10% 20%, rgba(197, 160, 89, 0.25), transparent 50%), radial-gradient(circle at 90% 70%, rgba(197, 160, 89, 0.2), transparent 50%), #060606 !important; background-attachment: fixed !important; min-height: 100vh; }
+.gradio-container { max-width: 100% !important; padding: 56px 4% 0 !important; background: #060606 !important; min-height: 100vh; }
 
 h1, h2, h3, h4, h5, h6 { font-family: 'Playfair Display', serif !important; font-weight: 400 !important; }
 
-.elegant-subtitle { font-family: 'Montserrat', sans-serif !important; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; color: #888888; }
-
-/* Glassmorphism Sticky Navbar */
-.tabs > .tab-nav { position: fixed; top: 0; left: 0; width: 100%; display: flex; justify-content: center; align-items: center; background: rgba(6, 6, 6, 0.6) !important; backdrop-filter: blur(15px) !important; -webkit-backdrop-filter: blur(15px) !important; z-index: 9999; border-bottom: 1px solid rgba(197, 160, 89, 0.15) !important; margin: 0 !important; padding: 5px 0 0 0 !important; box-shadow: 0 4px 30px rgba(0,0,0,0.5); }
-.tabs > .tab-nav > button { border: none !important; background: transparent !important; color: rgba(255,255,255,0.4) !important; font-family: 'Montserrat', sans-serif !important; font-weight: 300 !important; font-size: 0.75em !important; letter-spacing: 3px !important; text-transform: uppercase !important; padding: 20px 15px !important; margin: 0 15px !important; transition: all 0.4s ease !important; border-bottom: 2px solid transparent !important; }
+/* Compact Sticky Navbar */
+.tabs > .tab-nav { position: fixed; top: 0; left: 0; width: 100%; display: flex; justify-content: center; align-items: center; background: rgba(6,6,6,0.85) !important; backdrop-filter: blur(12px) !important; -webkit-backdrop-filter: blur(12px) !important; z-index: 9999; border-bottom: 1px solid rgba(197,160,89,0.12) !important; margin: 0 !important; padding: 0 !important; box-shadow: 0 2px 20px rgba(0,0,0,0.4); }
+.tabs > .tab-nav > button { border: none !important; background: transparent !important; color: rgba(255,255,255,0.4) !important; font-family: 'Montserrat', sans-serif !important; font-weight: 400 !important; font-size: 0.7em !important; letter-spacing: 2px !important; text-transform: uppercase !important; padding: 14px 12px !important; margin: 0 8px !important; transition: all 0.3s ease !important; border-bottom: 2px solid transparent !important; }
 .tabs > .tab-nav > button.selected { border-bottom: 2px solid #c5a059 !important; color: #c5a059 !important; }
 .tabs > .tab-nav > button:hover:not(.selected) { color: #fff !important; }
 
 /* Tables */
-table { border-collapse: collapse; width: 100%; margin-top: 15px; font-family: 'Inter', sans-serif; font-size: 0.85em; font-weight: 300; border-radius: 2px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
-th { background: transparent !important; color: #888888 !important; font-family: 'Montserrat', sans-serif; font-weight: 400; padding: 16px 20px; text-align: left; text-transform: uppercase; font-size: 0.75em; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-td { border-bottom: 1px solid rgba(255,255,255,0.02) !important; padding: 14px 20px; }
+table { border-collapse: collapse; width: 100%; margin-top: 12px; font-family: 'Inter', sans-serif; font-size: 0.82em; font-weight: 300; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; }
+th { background: rgba(255,255,255,0.02) !important; color: #888 !important; font-family: 'Montserrat', sans-serif; font-weight: 400; padding: 10px 14px; text-align: left; text-transform: uppercase; font-size: 0.72em; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+td { border-bottom: 1px solid rgba(255,255,255,0.025) !important; padding: 10px 14px; }
 tr:last-child td { border-bottom: none !important; }
-tr:hover td { background: rgba(255,255,255,0.01) !important; }
+tr:hover td { background: rgba(197,160,89,0.03) !important; }
 
-a { color: #c5a059 !important; text-decoration: none; transition: opacity 0.2s; }
+a { color: #c5a059 !important; text-decoration: none; }
 a:hover { opacity: 0.7; }
 footer { display: none !important; }
 
-/* Buttons */
-.gr-button { min-height: 42px !important; padding: 0 32px !important; font-size: 0.7em !important; font-family: 'Montserrat', sans-serif !important; font-weight: 300 !important; letter-spacing: 3px !important; text-transform: uppercase !important; border-radius: 8px !important; box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important; backdrop-filter: blur(10px) !important; transition: all 0.3s ease !important; }
-.gr-button-primary { background: rgba(197,160,89,0.15) !important; color: #c5a059 !important; border: 1px solid rgba(197,160,89,0.3) !important; }
-.gr-button-primary:hover { background: rgba(197,160,89,0.25) !important; border-color: rgba(197,160,89,0.6) !important; color: #fff !important; transform: translateY(-2px); }
-.gr-button-secondary { background: rgba(255,255,255,0.05) !important; color: #ededed !important; border: 1px solid rgba(255,255,255,0.1) !important; }
-.gr-button-secondary:hover { background: rgba(255,255,255,0.1) !important; color: #fff !important; border-color: rgba(255,255,255,0.3) !important; transform: translateY(-2px); }
+/* Rounded Buttons */
+.gr-button { min-height: 40px !important; padding: 0 28px !important; font-size: 0.72em !important; font-family: 'Montserrat', sans-serif !important; font-weight: 400 !important; letter-spacing: 1.5px !important; text-transform: uppercase !important; border-radius: 999px !important; transition: all 0.25s ease !important; }
+.gr-button-primary { background: rgba(197,160,89,0.12) !important; color: #c5a059 !important; border: 1px solid rgba(197,160,89,0.25) !important; }
+.gr-button-primary:hover { background: rgba(197,160,89,0.22) !important; border-color: rgba(197,160,89,0.5) !important; color: #fff !important; }
+.gr-button-secondary { background: rgba(255,255,255,0.04) !important; color: #ccc !important; border: 1px solid rgba(255,255,255,0.08) !important; }
+.gr-button-secondary:hover { background: rgba(255,255,255,0.08) !important; color: #fff !important; border-color: rgba(255,255,255,0.2) !important; }
 
-.gr-box, .gr-input, .gr-dropdown { min-height: 38px !important; font-size: 0.85em !important; border-radius: 0 !important; background-color: transparent !important; border: 1px solid rgba(255,255,255,0.1) !important; color: #fff !important; }
+/* Inputs */
+.gr-box, .gr-input, .gr-dropdown { min-height: 36px !important; font-size: 0.85em !important; border-radius: 8px !important; background-color: rgba(255,255,255,0.02) !important; border: 1px solid rgba(255,255,255,0.08) !important; color: #fff !important; }
 .gr-box:focus-within, .gr-input:focus, .gr-dropdown:focus { border-color: #c5a059 !important; }
 
 /* Sliders */
-input[type="range"] { height: 1px !important; background: rgba(255,255,255,0.1) !important; -webkit-appearance: none !important; border-radius: 0 !important; margin: 15px 0 !important; outline: none !important; }
-input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none !important; width: 14px !important; height: 14px !important; background: #c5a059 !important; border-radius: 50% !important; cursor: pointer !important; margin-top: -4px !important; }
-input[type="range"]::-moz-range-thumb { width: 14px !important; height: 14px !important; background: #c5a059 !important; border: none !important; border-radius: 50% !important; }
+input[type="range"] { height: 2px !important; background: rgba(255,255,255,0.08) !important; -webkit-appearance: none !important; border-radius: 1px !important; margin: 12px 0 !important; outline: none !important; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none !important; width: 14px !important; height: 14px !important; background: #c5a059 !important; border-radius: 50% !important; cursor: pointer !important; margin-top: -6px !important; }
 
 /* Chat */
-div[class*='message'] { border-radius: 2px !important; font-family: 'Inter', sans-serif !important; font-weight: 300 !important; font-size: 0.95em !important; box-shadow: none !important; }
-div[class*='message'][class*='bot'] { background: rgba(255, 255, 255, 0.01) !important; border: 1px solid rgba(255,255,255,0.05) !important; border-left: 2px solid #c5a059 !important; padding: 12px 18px !important; }
-div[class*='message'][class*='user'] { background: rgba(197, 160, 89, 0.05) !important; border: 1px solid rgba(255,255,255,0.05) !important; border-right: 2px solid #c5a059 !important; color: #c5a059 !important; padding: 12px 18px !important; }
+div[class*='message'] { border-radius: 12px !important; font-family: 'Inter', sans-serif !important; font-weight: 300 !important; font-size: 0.92em !important; }
+div[class*='message'][class*='bot'] { background: rgba(255,255,255,0.02) !important; border: 1px solid rgba(255,255,255,0.05) !important; border-left: 3px solid #c5a059 !important; }
+div[class*='message'][class*='user'] { background: rgba(197,160,89,0.04) !important; border: 1px solid rgba(255,255,255,0.05) !important; }
 
-textarea { font-family: 'Inter', sans-serif !important; font-weight: 300 !important; letter-spacing: 0.5px; min-height: 40px !important; padding: 10px 14px !important; }
-div[class*='form'] > div { border-radius: 2px !important; }
-div[class*='form']:focus-within { border-color: #c5a059 !important; box-shadow: none !important; }
+textarea { font-family: 'Inter', sans-serif !important; font-weight: 300 !important; min-height: 38px !important; padding: 10px 14px !important; border-radius: 8px !important; }
 
-/* Plotly charts: transparent bg */
+/* Plotly */
 .js-plotly-plot .plotly .main-svg { background: transparent !important; }
 
 /* Emergency button */
-.emergency-btn { background: rgba(255,68,68,0.15) !important; color: #ff4444 !important; border: 1px solid rgba(255,68,68,0.4) !important; font-size: 0.85em !important; letter-spacing: 2px !important; }
-.emergency-btn:hover { background: rgba(255,68,68,0.3) !important; border-color: #ff4444 !important; }
+.emergency-btn { background: rgba(255,68,68,0.1) !important; color: #ff4444 !important; border: 1px solid rgba(255,68,68,0.3) !important; border-radius: 999px !important; }
+.emergency-btn:hover { background: rgba(255,68,68,0.2) !important; border-color: #ff4444 !important; }
 """
 
 theme = gr.themes.Monochrome(
@@ -743,24 +739,21 @@ except:
 
 with gr.Blocks(title="BlackIce Platform") as demo:
 
-    # ---- HEADER ----
+    # ---- COMPACT HEADER ----
     gr.Markdown("""
-    <div style="padding: 50px 0 30px 0; max-width: 800px;">
-    <h1 style="font-size: 4.5em; margin: 0; color: #fff; line-height: 1.1; font-family: 'Playfair Display', serif; font-weight: 400; letter-spacing: -2px;">
-      BlackIce<span style="font-style: italic; color: #c5a059; font-weight: 400;">.</span>
-    </h1>
-    <h3 class="elegant-subtitle" style="margin-top: 25px; font-size: 0.9em;">
-    Financial Intelligence & Risk Analysis &mdash; Databricks Lakehouse
-    </h3>
-    <div style="display: flex; gap: 24px; margin-top: 40px; font-family: 'Montserrat', sans-serif; font-size: 0.75em; color: #888; text-transform: uppercase; letter-spacing: 1.5px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 20px; flex-wrap: wrap;">
-        <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> Threat Hunting</div>
-        <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> RBI Directive DB</div>
-        <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> Scheme Matching</div>
-        <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> Recovery Ops</div>
-        <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> Fraud Rings</div>
+    <div style="display:flex; align-items:center; gap:20px; padding:12px 0 8px 0; flex-wrap:wrap;">
+      <h1 style="font-size:2em; margin:0; color:#fff; font-family:'Playfair Display',serif; font-weight:400; letter-spacing:-1px;">
+        BlackIce<span style="font-style:italic; color:#c5a059;">.</span>
+      </h1>
+      <div style="display:flex; gap:16px; font-family:'Montserrat',sans-serif; font-size:0.65em; color:#666; text-transform:uppercase; letter-spacing:1.5px; flex-wrap:wrap;">
+        <span><span style="color:#c5a059;">&loz;</span> Threats</span>
+        <span><span style="color:#c5a059;">&loz;</span> RBI</span>
+        <span><span style="color:#c5a059;">&loz;</span> Schemes</span>
+        <span><span style="color:#c5a059;">&loz;</span> Recovery</span>
+        <span><span style="color:#c5a059;">&loz;</span> Rings</span>
+      </div>
     </div>
-    </div>
-    <div style="width: 100%; height: 1px; background: rgba(255,255,255,0.05); margin-bottom: 40px;"></div>
+    <div style="width:100%; height:1px; background:rgba(255,255,255,0.04); margin-bottom:16px;"></div>
     """)
 
     with gr.Tabs():
