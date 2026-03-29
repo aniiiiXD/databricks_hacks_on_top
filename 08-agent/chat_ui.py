@@ -1012,24 +1012,73 @@ with gr.Blocks(title="BlackIce Platform") as demo:
         # TAB 3: INDIA STORY
         # ================================================================
         with gr.Tab("India Story"):
-            story_out = gr.Markdown("*Click below to load India's digital payment landscape.*")
-            with gr.Row():
-                story_btn = gr.Button("Load India Story", variant="primary")
-                bank_btn = gr.Button("Bank Fraud Losses", variant="secondary")
-                complaint_btn = gr.Button("RBI Complaints", variant="secondary")
-            story_btn.click(fn=get_india_story, outputs=story_out)
+            def load_full_india_story():
+                """Load everything at once — no clicking needed."""
+                story = get_india_story()
+                bank = get_bank_fraud()
+                try:
+                    complaint = get_complaint_surge()
+                except:
+                    complaint = ""
 
-            bank_out = gr.Markdown()
-            bank_btn.click(fn=get_bank_fraud, outputs=bank_out)
+                # Add streaming + fraud ring context
+                _, stream = query_sql("""
+                SELECT COUNT(*) FROM digital_artha.main.streaming_platinum
+                """)
+                stream_count = stream[0][0] if stream else "N/A"
 
-            complaint_out = gr.Markdown()
-            complaint_btn.click(fn=get_complaint_surge, outputs=complaint_out)
+                _, rings = query_sql("""
+                SELECT COUNT(*) AS rings, SUM(accounts) AS accounts,
+                       ROUND(SUM(total_amount), 0) AS volume
+                FROM digital_artha.main.detected_fraud_rings
+                """)
 
-            gr.Markdown("---")
-            gr.Markdown("### UPI Growth Trajectory")
-            upi_chart = gr.Plot()
-            upi_chart_btn = gr.Button("Load UPI Growth Chart", size="sm", variant="secondary")
-            upi_chart_btn.click(fn=get_upi_growth_chart, outputs=upi_chart)
+                ring_stats = ""
+                if rings and rings[0]:
+                    ring_stats = f"""
+---
+
+### Fraud Ring Intelligence (Graph Analysis)
+
+| Metric | Value |
+|--------|-------|
+| Fraud rings detected | **{rings[0][0]}** |
+| Accounts in rings | **{rings[0][1]}** |
+| Money flowing through rings | **₹{rings[0][2]}** |
+| Detection method | NetworkX: connected components + PageRank |
+"""
+
+                streaming_stats = f"""
+---
+
+### Real-Time Streaming Pipeline
+
+| Metric | Value |
+|--------|-------|
+| Transactions streamed | **{stream_count}** |
+| Pipeline | Bronze → Silver → Platinum (incremental, exactly-once) |
+| Trigger | Auto Loader with checkpoints |
+| Scoring | Rule-based ensemble (amount + time + risk signals) |
+"""
+
+                full = story + "\n\n" + bank + "\n\n" + complaint + ring_stats + streaming_stats
+                return full
+
+            story_out = gr.Markdown("Loading India's financial landscape...")
+            try:
+                upi_chart = gr.Plot()
+            except:
+                pass
+
+            def load_india_page():
+                try:
+                    chart = get_upi_growth_chart()
+                except:
+                    chart = go.Figure().update_layout(title="UPI data not available", **PLOTLY_LAYOUT)
+                return load_full_india_story(), chart
+
+            story_out = gr.Markdown("Loading...")
+            upi_chart = gr.Plot(label="UPI Growth")
 
         # ================================================================
         # TAB 4: SCHEME FINDER
@@ -1068,6 +1117,7 @@ with gr.Blocks(title="BlackIce Platform") as demo:
     demo.load(fn=get_kpis, outputs=kpi_output)
     demo.load(fn=load_all_charts, outputs=[heatmap_plot, risk_dist_plot, trend_plot, amount_plot])
     demo.load(fn=get_ring_network_graph, outputs=ring_graph_plot)
+    demo.load(fn=load_india_page, outputs=[story_out, upi_chart])
     # cat_matrix removed
 
 
