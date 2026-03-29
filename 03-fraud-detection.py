@@ -105,12 +105,12 @@ print(f"Feature-engineered: {featured_df.count():,} rows")
 
 # COMMAND ----------
 
+# NOTE: ai_risk_score_num excluded — it's derived from is_fraud (data leakage)
 feature_cols = [
     "amount", "hour_of_day", "day_of_week_num", "is_weekend_num",
     "sender_avg_amount", "sender_std_amount",
     "amount_deviation", "amount_ratio_to_max",
     "is_new_sender", "late_night_high_value",
-    "ai_risk_score_num"
 ]
 
 # Stratified sampling — preserve ALL fraud rows + sample normal rows
@@ -219,14 +219,13 @@ for c in range(k):
 
 # COMMAND ----------
 
-w_if = 0.45
-w_km = 0.30
-w_ai = 0.25
+# Ensemble: pure ML signals only (no data-leaked ai_risk_score)
+w_if = 0.55
+w_km = 0.45
 
 pdf["ensemble_score"] = (
     w_if * pdf["if_score"] +
-    w_km * pdf["km_score"] +
-    w_ai * pdf["ai_risk_score_num"]
+    w_km * pdf["km_score"]
 )
 
 pdf["ensemble_flag"] = pdf["ensemble_score"] > 0.5

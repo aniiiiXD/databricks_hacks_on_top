@@ -184,12 +184,15 @@ for i in range(2, 5):
     # PLATINUM: Score with ML ensemble + assign anomaly pattern
     q3 = (spark.readStream
         .table(f"{catalog}.{schema}.streaming_silver")
+        # Score using the same rule-based heuristic as the main pipeline
+        # (actual IsolationForest/KMeans can't run in streaming context on serverless)
         .withColumn("ensemble_score",
-            F.when(F.col("risk_tier") == "HIGH_RISK",
-                F.lit(0.3) + F.rand() * 0.7  # 0.3-1.0 for high risk
-            ).otherwise(
-                F.rand() * 0.3  # 0.0-0.3 for normal
-            )
+            F.round(
+                F.lit(0.25) * F.when(F.col("ai_risk_score").isNotNull(), F.col("ai_risk_score").cast("double")).otherwise(F.lit(0.1)) +
+                F.lit(0.35) * F.when(F.col("amount") > 10000, F.lit(0.8)).when(F.col("amount") > 5000, F.lit(0.5)).otherwise(F.lit(0.1)) +
+                F.lit(0.25) * F.when(F.col("hour_of_day").between(0, 5), F.lit(0.9)).otherwise(F.lit(0.1)) +
+                F.lit(0.15) * F.when(F.col("risk_tier") == "HIGH_RISK", F.lit(0.9)).otherwise(F.lit(0.1))
+            , 3)
         )
         .withColumn("ensemble_flag",
             F.when(F.col("ensemble_score") > 0.5, True).otherwise(False)

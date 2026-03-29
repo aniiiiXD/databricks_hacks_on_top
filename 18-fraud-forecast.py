@@ -62,7 +62,7 @@ try:
 except Exception as e:
     print(f"ai_forecast() not available: {e}")
     print()
-    print("Falling back to simple moving average forecast...")
+    print("ai_forecast() not available. Using statistical baseline (moving average ± std deviation)...")
 
     # Fallback: simple moving average prediction
     spark.sql(f"""

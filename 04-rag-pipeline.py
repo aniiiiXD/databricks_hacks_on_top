@@ -163,7 +163,7 @@ Explain complex regulatory language in simple terms."""
         from databricks.sdk import WorkspaceClient
         w = WorkspaceClient()
         response = w.serving_endpoints.query(
-            name="databricks-meta-llama-3-1-70b-instruct",
+            name="databricks-llama-4-maverick",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -212,7 +212,7 @@ rag_config = {
     "faiss_index_path": f"/Volumes/{catalog}/{schema}/raw_data/faiss_index/rbi_circulars.faiss",
     "faiss_metadata_path": f"/Volumes/{catalog}/{schema}/raw_data/faiss_index/chunk_metadata.pkl",
     "embedding_model": "intfloat/multilingual-e5-small",
-    "llm_endpoint": "databricks-meta-llama-3-1-70b-instruct",
+    "llm_endpoint": "databricks-llama-4-maverick",
     "top_k": 5,
     "catalog": catalog,
     "schema": schema,

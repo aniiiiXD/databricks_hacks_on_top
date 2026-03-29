@@ -90,7 +90,7 @@ For each scheme, explain briefly what it offers and why this person qualifies.""
         from databricks.sdk import WorkspaceClient
         w = WorkspaceClient()
         response = w.serving_endpoints.query(
-            name="databricks-meta-llama-3-1-70b-instruct",
+            name="databricks-llama-4-maverick",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=800,
             temperature=0.2

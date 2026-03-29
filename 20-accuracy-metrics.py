@@ -245,7 +245,7 @@ print(f"""
   High risk senders:         {high_risk:,}
   RBI circulars indexed:     {circulars}
   RAG chunks:                {chunks}
-  BhashaBench score:         100% (20/20)
+  BhashaBench score:         {avg_score:.1f}% ({perfect}/{total_q})
   Schemes indexed:           {schemes}
   Pipeline tables:           {total_tables}
   Total rows:                {total_rows:,}

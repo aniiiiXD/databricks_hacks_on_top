@@ -56,7 +56,7 @@ CATALOG = os.environ.get("CATALOG", "digital_artha")
 SCHEMA = os.environ.get("SCHEMA", "main")
 GENIE_SPACE_ID = os.environ.get("GENIE_SPACE_ID", "")
 WAREHOUSE_ID = os.environ.get("WAREHOUSE_ID", "")
-LLM_ENDPOINT = os.environ.get("LLM_ENDPOINT", "databricks-meta-llama-3-1-70b-instruct")
+LLM_ENDPOINT = os.environ.get("LLM_ENDPOINT", "databricks-llama-4-maverick")
 
 # --- MLflow ---
 mlflow.langchain.autolog()
