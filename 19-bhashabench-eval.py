@@ -41,23 +41,36 @@ if not db_token:
 def ask_llm(question, system_prompt="You are a financial expert specializing in Indian banking, UPI, and RBI regulations. Answer concisely in 2-3 sentences."):
     """Query Foundation Model API via REST."""
     try:
-        resp = requests.post(
-            f"https://{db_host}/serving-endpoints/databricks-llama-4-maverick/invocations",
-            headers={"Authorization": f"Bearer {db_token}"},
-            json={
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": question}
-                ],
-                "max_tokens": 200,
-                "temperature": 0.1
-            },
-            timeout=60
-        )
+        url = f"https://{db_host}/serving-endpoints/databricks-llama-4-maverick/invocations"
+        payload = {
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question}
+            ],
+            "max_tokens": 200,
+            "temperature": 0.1
+        }
+        resp = requests.post(url, headers={"Authorization": f"Bearer {db_token}"}, json=payload, timeout=60)
         data = resp.json()
-        return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        # Try multiple response formats
+        if "choices" in data:
+            return data["choices"][0]["message"]["content"]
+        elif "predictions" in data:
+            return str(data["predictions"][0])
+        elif "output" in data:
+            return str(data["output"])
+        else:
+            return f"UNEXPECTED_FORMAT: {json.dumps(data)[:200]}"
     except Exception as e:
         return f"ERROR: {e}"
+
+# Debug: test the connection first
+print(f"Host: {db_host}")
+print(f"Token: {db_token[:10]}..." if db_token else "Token: EMPTY!")
+test_answer = ask_llm("What is UPI?")
+print(f"Test answer: {test_answer[:200]}")
+assert len(test_answer) > 10 and not test_answer.startswith("ERROR"), f"LLM connection failed: {test_answer}"
 
 # COMMAND ----------
 
