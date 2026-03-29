@@ -54,6 +54,7 @@
 │  │   valid_txn_id (NOT NULL) — ON VIOLATION DROP ROW          │  │
 │  │   valid_amount (> 0, < 10M) — ON VIOLATION DROP ROW        │  │
 │  │   valid_timestamp (NOT NULL)                                │  │
+│  │   sender_not_receiver (sender_id != receiver_id)            │  │
 │  │                                                             │  │
 │  │ Derived Features:                                           │  │
 │  │   is_weekend (day_of_week IN Saturday/Sunday)               │  │
@@ -87,7 +88,7 @@
 │  │   80→chunked at 4000ch    170 rows                          │  │
 │  │   AGGREGATE() accumulator plain_summary                     │  │
 │  │   citation strings        eligibility_json                  │  │
-│  │   → FAISS vector index                                      │  │
+│  │   → FAISS vector index    (TO_JSON + NAMED_STRUCT)          │  │
 │  │                                                             │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │  Tags: tier=gold, quality=business_ready                         │
@@ -107,10 +108,11 @@
 │  │ │ Sender features: velocity, deviation, new_sender    │    │  │
 │  │ └─────────────────────────────────────────────────────┘    │  │
 │  │                                                             │  │
-│  │ gold_fraud_alerts_ml     1,800 flagged transactions        │  │
-│  │ platinum_anomaly_patterns  8 named fraud patterns          │  │
-│  │ platinum_sender_profiles   5,000 composite risk scores     │  │
-│  │ platinum_merchant_profiles 10 category risk analysis       │  │
+│  │ gold_fraud_alerts_ml      1,800 flagged transactions       │  │
+│  │ platinum_anomaly_patterns   8 named fraud patterns         │  │
+│  │ platinum_sender_profiles    5,000 composite risk scores    │  │
+│  │ platinum_merchant_profiles  10 category risk analysis      │  │
+│  │ platinum_fraud_rings        150 rings (graph analysis)     │  │
 │  │                                                             │  │
 │  │ WARM VIEWS (pre-aggregated for dashboard):                 │  │
 │  │   mv_fraud_summary | mv_high_risk_senders                  │  │
@@ -136,7 +138,29 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## 3. Hot / Warm / Cold Serving Architecture
+## 3. Real-Time Streaming Pipeline
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  NEW FILE    │     │  STREAMING   │     │  STREAMING   │     │  STREAMING   │
+│  DROPPED     │ ──▶ │  BRONZE      │ ──▶ │  SILVER      │ ──▶ │  PLATINUM    │
+│              │     │              │     │              │     │              │
+│  Auto Loader │     │  10 columns  │     │  Quality     │     │  4-signal    │
+│  detects it  │     │  cast + typed│     │  filter:     │     │  ensemble    │
+│  via         │     │  ingested_at │     │  NOT NULL    │     │  score       │
+│  checkpoint  │     │  timestamp   │     │  amount > 0  │     │  8 patterns  │
+│              │     │              │     │  risk_tier   │     │  scored_at   │
+└──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
+
+Properties:
+  ├── Exactly-once semantics (checkpoint-based)
+  ├── Incremental — only new files processed
+  ├── 5 micro-batches demonstrated (2 initial + 3 live)
+  ├── Judges can inject custom transactions
+  └── Production: switch availableNow → processingTime for continuous
+```
+
+## 4. Hot / Warm / Cold Serving Architecture
 
 ```
                     QUERY LATENCY
@@ -146,41 +170,52 @@
     ┌──────────────────────────────────────────────────────┐
     │  HOT TIER — Real-Time Agent Tools                     │
     │                                                       │
-    │  Agent SQL queries via Databricks SDK                 │
-    │  ├── lookup_fraud_alerts (parameterized SQL)          │
-    │  ├── check_loan_eligibility (PySpark → LLM)           │
-    │  ├── fraud_recovery_guide (direct table query)        │
-    │  └── MCP: Vector Search + Genie Space                 │
+    │  9 tools via Databricks SDK (parameterized SQL)       │
+    │  ├── lookup_fraud_alerts                              │
+    │  ├── check_loan_eligibility (SQL + LLM)               │
+    │  ├── fraud_recovery_guide                             │
+    │  ├── lookup_fraud_rings                               │
+    │  ├── lookup_sender_profile                            │
+    │  ├── get_current_time                                 │
+    │  └── MCP: Vector Search + Genie Space (2 tools)       │
     │                                                       │
     │  Latency: 1-5 seconds (includes LLM generation)      │
-    │  Access: Agent chat UI at localhost:7860               │
+    │  Security: StatementParameterListItem (no injection)  │
     └───────────────────────────┬──────────────────────────┘
                                 │
     ┌───────────────────────────┴──────────────────────────┐
     │  WARM TIER — Pre-Aggregated Views                     │
     │                                                       │
-    │  13 viz_* views (pre-computed for dashboard)          │
+    │  13 viz_* views (pre-computed for dashboard):         │
+    │  viz_fraud_heatmap | viz_category_time_matrix         │
+    │  viz_risk_distribution | viz_amount_comparison        │
+    │  viz_monthly_trend | viz_upi_growth | viz_bank_fraud  │
+    │  viz_state_vulnerability | viz_anomaly_patterns       │
+    │  viz_recovery_guide | viz_risky_senders | viz_kpis    │
+    │  viz_complaint_surge                                  │
+    │                                                       │
     │  mv_fraud_summary (aggregated by date/category/state)│
     │  mv_high_risk_senders (filtered composite > 0.3)     │
     │                                                       │
-    │  Latency: < 1 second (pre-computed, cached)          │
-    │  Access: Lakeview Dashboard (4 pages)                │
+    │  Latency: < 1 second (pre-computed at write time)    │
+    │  Access: Lakeview Dashboard (4 pages, 20+ widgets)   │
     └───────────────────────────┬──────────────────────────┘
                                 │
     ┌───────────────────────────┴──────────────────────────┐
     │  COLD TIER — Full Historical Tables                   │
     │                                                       │
     │  gold_transactions (750K) + Liquid Clustering        │
+    │    CLUSTER BY (transaction_date, final_risk_tier)    │
     │  gold_transactions_enriched (896K) + ML scores       │
     │  Full sender/merchant profiles                        │
     │  All bronze/silver intermediate tables                │
     │                                                       │
-    │  Latency: 5-30 seconds (full table scan)             │
+    │  Latency: 5-30 seconds (optimized range scans)       │
     │  Access: SQL Editor, Notebooks, Genie Space          │
     └──────────────────────────────────────────────────────┘
 ```
 
-## 4. ML Pipeline Architecture
+## 5. ML Pipeline Architecture
 
 ```
 gold_transactions (750K rows)
@@ -202,10 +237,13 @@ gold_transactions (750K rows)
 │  ├── late_night_high_value            │
 │  ├── day_of_week_num (encoded)        │
 │  └── is_weekend_num                   │
+│                                       │
+│  NOTE: ai_risk_score excluded to      │
+│  prevent data leakage                 │
 └──────────┬───────────────────────────┘
            │
            ▼ Stratified Sampling
-           │ (ALL fraud + sampled normal)
+           │ (ALL fraud + sampled normal, max 200K)
            │
      ┌─────┴─────┐
      ▼           ▼
@@ -215,7 +253,9 @@ gold_transactions (750K rows)
 │300 trees│ │         │
 │contam   │ │ Distance│
 │= 0.02   │ │ to      │
-│         │ │ center  │
+│max 10K  │ │ center  │
+│samples  │ │ 95th %  │
+│         │ │ thresh  │
 │score    │ │ score   │
 │(0-1)    │ │ (0-1)   │
 └────┬────┘ └────┬────┘
@@ -229,6 +269,8 @@ gold_transactions (750K rows)
 │  0.25 × Rule-based risk score    │
 │  ─────────────────────────────── │
 │  = ensemble_score (0-1)          │
+│                                   │
+│  Separation: Cohen's d = 2.128   │
 │                                   │
 │  Threshold → Risk Tiers:         │
 │  < 0.3 = low                     │
@@ -252,91 +294,207 @@ gold_transactions (750K rows)
 └─────────────────────────────────┘
 ```
 
-## 5. Agent Architecture
+## 6. Fraud Ring Detection (Graph Intelligence)
 
 ```
-┌──────────────────────────────────────────────────────┐
-│  GRADIO UI (localhost:7860)                            │
-│  ┌────────────┬─────────────┬────────────┬─────────┐ │
-│  │ Fraud      │ Ask Agent   │ Scheme     │ About   │ │
-│  │ Monitor    │ (Chat)      │ Finder     │         │ │
-│  │            │             │ (Form)     │         │ │
-│  │ Direct SQL │ → Agent API │ → Agent    │ Static  │ │
-│  └─────┬──────┴──────┬──────┴─────┬──────┴─────────┘ │
-└────────┼─────────────┼────────────┼──────────────────┘
-         │             │            │
-         │        ┌────┴────┐       │
-         │        ▼         │       │
-         │  ┌───────────────┴───────┴──────────────┐
-         │  │  MLflow AgentServer (port 8000)        │
-         │  │  LangGraph create_react_agent          │
-         │  │  + MemorySaver (conversation memory)   │
-         │  │                                        │
-         │  │  7 Tools:                              │
-         │  │  ┌──────────────────────────────────┐  │
-         │  │  │ lookup_fraud_alerts              │  │
-         │  │  │ (SQL → gold_fraud_alerts_ml)     │  │
-         │  │  ├──────────────────────────────────┤  │
-         │  │  │ check_loan_eligibility           │  │
-         │  │  │ (SQL → gold_schemes → LLM)       │  │
-         │  │  ├──────────────────────────────────┤  │
-         │  │  │ fraud_recovery_guide             │  │
-         │  │  │ (SQL → fraud_recovery_guide)     │  │
-         │  │  ├──────────────────────────────────┤  │
-         │  │  │ get_current_time                 │  │
-         │  │  ├──────────────────────────────────┤  │
-         │  │  │ MCP: Vector Search               │  │
-         │  │  │ (RBI circular semantic search)   │  │
-         │  │  ├──────────────────────────────────┤  │
-         │  │  │ MCP: Genie query                 │  │
-         │  │  │ (NL analytics on fraud data)     │  │
-         │  │  ├──────────────────────────────────┤  │
-         │  │  │ MCP: Genie poll                  │  │
-         │  │  │ (get Genie results)              │  │
-         │  │  └──────────────────────────────────┘  │
-         │  └────────────────────────────────────────┘
+gold_transactions_enriched
+        │
+        ▼ Filter: ≥2 interactions OR ≥1 fraud flag
+┌──────────────────────────────────────┐
+│  TRANSACTION GRAPH (NetworkX)         │
+│                                       │
+│  Nodes: all unique senders/receivers  │
+│  Edges: sender → receiver (directed)  │
+│  Edge attrs: txn_count, total_amount, │
+│              avg_risk_score,           │
+│              fraud_txn_count           │
+└──────────┬───────────────────────────┘
+           │
+     ┌─────┼─────────┬──────────────┐
+     ▼     ▼         ▼              ▼
+┌────────┐┌────────┐┌─────────┐┌──────────┐
+│Connect-││Page-   ││Degree   ││Triangle  │
+│ed Comp-││Rank    ││Analysis ││Count     │
+│onents  ││α=0.85  ││         ││          │
+│        ││        ││in/out   ││Tight-knit│
+│Rings:  ││Hub     ││degree   ││groups    │
+│3-500   ││nodes = ││Top 5%   ││with high │
+│nodes   ││money   ││= hubs   ││density   │
+│        ││mules   ││         ││          │
+└───┬────┘└───┬────┘└────┬────┘└─────┬────┘
+    │         │          │           │
+    ▼         ▼          ▼           ▼
+┌─────────────────────────────────────────┐
+│  RING SCORING                            │
+│                                          │
+│  150 fraud rings detected                │
+│   57 with circular money flows           │
+│   93 money mule hub accounts             │
+│  ₹8.68 Crore flowing through rings      │
+│                                          │
+│  Severity: fraud_density + avg_risk +    │
+│            subgraph_density              │
+│  → low / medium / high / critical        │
+│                                          │
+│  Composite Risk (per sender):            │
+│  30% ML_score + 25% fraud_rate +         │
+│  20% PageRank + 15% late_night +         │
+│  10% degree_centrality                   │
+└─────────────────────────────────────────┘
+```
+
+## 7. Agent Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  GRADIO UI (localhost:7860)                                    │
+│  ┌──────────┬────────────┬────────────┬───────────┬────────┐ │
+│  │ Home     │ Command    │ Ask        │ India     │ Scheme │ │
+│  │          │ Center     │ BlackIce   │ Story     │ Finder │ │
+│  │ KPIs     │ Direct SQL │ Agent Chat │ UPI/Fraud │ Form   │ │
+│  │ auto-    │ Alerts +   │ 9 tools    │ Stats +   │ → LLM  │ │
+│  │ load     │ Patterns + │ Memory     │ Vulnera-  │ match  │ │
+│  │          │ Senders    │ Multilang  │ bility    │ 5 lang │ │
+│  └─────┬────┴─────┬──────┴─────┬──────┴─────┬─────┴───┬────┘ │
+└────────┼──────────┼────────────┼────────────┼─────────┼──────┘
+         │          │            │            │         │
+         │     ┌────┴────────────┴────────────┴─────────┘
+         │     ▼
+         │  ┌───────────────────────────────────────────────┐
+         │  │  MLflow AgentServer (port 8000)                │
+         │  │  LangGraph create_react_agent + MemorySaver    │
+         │  │                                                │
+         │  │  9 Tools:                                      │
+         │  │  ┌─────────────────────────────────────────┐   │
+         │  │  │ CUSTOM (6):                             │   │
+         │  │  │  lookup_fraud_alerts     (param SQL)    │   │
+         │  │  │  check_loan_eligibility  (SQL + LLM)    │   │
+         │  │  │  fraud_recovery_guide    (param SQL)    │   │
+         │  │  │  lookup_fraud_rings      (param SQL)    │   │
+         │  │  │  lookup_sender_profile   (param SQL)    │   │
+         │  │  │  get_current_time        (utility)      │   │
+         │  │  ├─────────────────────────────────────────┤   │
+         │  │  │ MCP (3):                                │   │
+         │  │  │  Vector Search  (RBI circular RAG)      │   │
+         │  │  │  Genie query    (NL → SQL analytics)    │   │
+         │  │  │  Genie poll     (async result fetch)    │   │
+         │  │  └─────────────────────────────────────────┘   │
+         │  │                                                │
+         │  │  Security: StatementParameterListItem binding  │
+         │  │  on all 6 custom tools (zero SQL injection)    │
+         │  └────────────────────────────────────────────────┘
          │
-         ▼ (Direct SQL for Fraud Monitor tab)
+         ▼ (Direct SQL for Command Center tab)
 ┌────────────────────────────────────────┐
 │  DATABRICKS SQL WAREHOUSE              │
 │  Serverless Starter (2X-Small)         │
 │                                        │
 │  All tables in digital_artha.main      │
-│  15+ tables | 13 views | 2M+ rows     │
+│  15+ tables | 13 views | 3.15M+ rows  │
 └────────────────────────────────────────┘
 ```
 
-## 6. Key Differentiators
+## 8. RAG Pipeline (RBI Circular Search)
 
 ```
-WHAT EVERY TEAM DOES          WHAT WE DID DIFFERENTLY
-─────────────────────          ─────────────────────────
-1 ML model                     Ensemble (IF + KMeans + Rules)
-                               with stratified sampling
+80 RBI Circulars (rbi.org.in)
+        │
+        ▼
+┌──────────────────────────────────────┐
+│  CHUNKING (SQL AGGREGATE pattern)     │
+│                                       │
+│  Split at paragraph boundaries        │
+│  Target: ~4000 chars per chunk        │
+│  AGGREGATE + named_struct accumulator │
+│  LATERAL VIEW POSEXPLODE → rows       │
+│  Output: gold_circular_chunks         │
+└──────────┬───────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────┐
+│  EMBEDDING                            │
+│                                       │
+│  Model: intfloat/multilingual-e5-small│
+│  Dimensions: 384                      │
+│  Languages: 22 (Hindi, Tamil, etc.)   │
+│  Prefix: "passage: " / "query: "      │
+└──────────┬───────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────┐
+│  FAISS INDEX                          │
+│                                       │
+│  IndexFlatIP (cosine similarity)      │
+│  Stored in UC Volumes (serverless OK) │
+│  + chunk_metadata.pkl                 │
+└──────────┬───────────────────────────┘
+           │
+           ▼ Query: top-5 chunks retrieved
+┌──────────────────────────────────────┐
+│  GENERATION                           │
+│                                       │
+│  Model: Llama 4 Maverick             │
+│  via Foundation Model API             │
+│  Temperature: 0.1 (factual)          │
+│  System: "You are BlackIce, an       │
+│           expert on RBI regulations"  │
+│  Output: answer + source citations   │
+└──────────────────────────────────────┘
+```
 
-Generic "fraud/not fraud"      8 named anomaly patterns
-                               (Late Night High Value, etc.)
+## 9. Databricks Features Map (17 Total)
 
-Raw data → model               4-tier medallion with DLT
-                               EXPECT constraints + UC tags
-
-Simple chatbot                 7-tool agent with MCP protocol
-                               (Vector Search + Genie live)
-
-English only                   Hindi + English (multilingual
-                               embeddings + LLM)
-
-Model metrics only             State Vulnerability Index
-                               (fraud × internet × Jan Dhan)
-
-No human angle                 Fraud recovery guide with
-                               RBI-mandated steps + liability
-
-3-5 Databricks features        17 Databricks features
-
-Dashboard with charts          4-page dashboard + 4-tab
-                               Gradio app + Genie Space
-
-No data governance             UC tags on 15 tables,
-                               liquid clustering, warm views
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  DATA LAYER                                                      │
+│  ┌────────────────┐ ┌────────────────┐ ┌──────────────────────┐ │
+│  │ 1. Delta Lake  │ │ 2. Unity       │ │ 3. Auto Loader       │ │
+│  │ All 15+ tables │ │    Catalog     │ │ Streaming ingestion  │ │
+│  │ ACID, schema   │ │ PK, comments,  │ │ Schema inference,    │ │
+│  │ enforcement    │ │ lineage, tags  │ │ exactly-once         │ │
+│  └────────────────┘ └────────────────┘ └──────────────────────┘ │
+│  ┌────────────────┐ ┌────────────────┐                          │
+│  │ 12. Change     │ │ 13. Liquid     │                          │
+│  │  Data Feed     │ │  Clustering    │                          │
+│  │ Incremental    │ │ CLUSTER BY     │                          │
+│  │ processing     │ │ (date, tier)   │                          │
+│  └────────────────┘ └────────────────┘                          │
+├─────────────────────────────────────────────────────────────────┤
+│  ETL + QUALITY LAYER                                             │
+│  ┌────────────────┐ ┌────────────────┐ ┌──────────────────────┐ │
+│  │ 4. DLT Pipeline│ │ 5. Spark SQL   │ │ 14. UC Tags          │ │
+│  │ EXPECT         │ │ Window funcs,  │ │ domain, tier, pii,   │ │
+│  │ constraints    │ │ AGGREGATE(),   │ │ source on 15 tables  │ │
+│  │ DROP ROW       │ │ LATERAL VIEW   │ │                      │ │
+│  └────────────────┘ └────────────────┘ └──────────────────────┘ │
+├─────────────────────────────────────────────────────────────────┤
+│  AI LAYER                                                        │
+│  ┌────────────────┐ ┌────────────────┐ ┌──────────────────────┐ │
+│  │ 6. Foundation  │ │ 7. Vector      │ │ 8. Genie Space       │ │
+│  │  Model API     │ │  Search (MCP)  │ │    (MCP)             │ │
+│  │ Llama 4        │ │ Semantic RAG   │ │ NL → SQL analytics   │ │
+│  │ Maverick       │ │ over circulars │ │ Entity matching      │ │
+│  └────────────────┘ └────────────────┘ └──────────────────────┘ │
+│  ┌────────────────┐ ┌────────────────┐                          │
+│  │ 16. FAISS on   │ │ 17. MCP        │                          │
+│  │  Volumes       │ │  Protocol      │                          │
+│  │ Vector index   │ │ Agent ↔ VS +   │                          │
+│  │ in UC Volumes  │ │ Genie live     │                          │
+│  └────────────────┘ └────────────────┘                          │
+├─────────────────────────────────────────────────────────────────┤
+│  SERVING LAYER                                                   │
+│  ┌────────────────┐ ┌────────────────┐ ┌──────────────────────┐ │
+│  │ 9. Lakeview    │ │ 10. Metric     │ │ 11. Databricks SDK   │ │
+│  │  Dashboard     │ │  Views (YAML)  │ │ WorkspaceClient,     │ │
+│  │ 4 pages, 20+   │ │ Dimensions +   │ │ statement execution, │ │
+│  │ widgets        │ │ measures +     │ │ API calls            │ │
+│  │                │ │ synonyms       │ │                      │ │
+│  └────────────────┘ └────────────────┘ └──────────────────────┘ │
+│  ┌────────────────┐                                              │
+│  │ 15. Databricks │                                              │
+│  │  Apps          │                                              │
+│  │ databricks.yml │                                              │
+│  │ + app.yaml     │                                              │
+│  └────────────────┘                                              │
+└─────────────────────────────────────────────────────────────────┘
 ```
