@@ -59,7 +59,12 @@ WAREHOUSE_ID = os.environ.get("WAREHOUSE_ID", "")
 LLM_ENDPOINT = os.environ.get("LLM_ENDPOINT", "databricks-llama-4-maverick")
 
 # --- MLflow ---
-mlflow.langchain.autolog()
+# Disable autolog (causes ContextVar warnings in async agent)
+# Set URIs to prevent experiment_id missing warning
+import os
+os.environ["MLFLOW_TRACKING_URI"] = "databricks"
+mlflow.set_tracking_uri("databricks")
+mlflow.set_registry_uri("databricks")
 
 # --- LLM ---
 llm = ChatDatabricks(endpoint=LLM_ENDPOINT, temperature=0.1, max_tokens=1000)
