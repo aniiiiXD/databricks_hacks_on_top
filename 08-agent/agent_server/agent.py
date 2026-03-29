@@ -74,6 +74,8 @@ CAPABILITIES:
 4. **Financial Analytics** — Query UPI transaction data, fraud metrics, and trends using natural language.
 
 5. **Fraud Recovery Help** — If someone has been scammed, explain exactly what to do: who to report to, RBI liability rules, time limits, step-by-step recovery process.
+6. **Fraud Ring Intelligence** — Query detected fraud rings from graph analysis. Show ring members, severity, money mule accounts, and network density.
+7. **Sender Risk Profiles** — Look up detailed risk profiles for specific sender accounts, including behavioral patterns and composite risk scores.
 
 BEHAVIOR:
 - Respond in the user's language. If they write in Hindi, respond in Hindi. Same for Marathi, Tamil, etc.
@@ -412,6 +414,109 @@ def check_loan_eligibility(
         return json.dumps({"error": str(e), "matched_schemes": [], "total_matches": 0})
 
 
+@tool
+def lookup_fraud_rings(
+    min_size: int = 3,
+    severity: str = "",
+    limit: int = 10,
+) -> str:
+    """
+    Look up detected fraud rings from graph analysis of transaction networks.
+
+    Args:
+        min_size: Minimum ring size (number of accounts involved, default 3)
+        severity: Filter by severity level: 'critical', 'high', 'medium', 'low'. Empty for all.
+        limit: Maximum rings to return (1-20, default 10)
+
+    Returns:
+        JSON with fraud rings including size, fraud rate, density, severity, and member accounts.
+    """
+    if not WAREHOUSE_ID:
+        return json.dumps({"error": "Warehouse not configured", "rings": []})
+
+    try:
+        limit = min(max(1, limit), 20)
+        min_size = max(2, min_size)
+        w = get_user_workspace_client()
+
+        conditions = [f"size >= {min_size}"]
+        if severity and severity.strip().lower() in ("critical", "high", "medium", "low"):
+            conditions.append(f"severity = '{severity.strip().lower()}'")
+
+        where = " AND ".join(conditions)
+        query = f"""
+        SELECT ring_id, size, edge_count, total_transactions, fraud_transactions,
+               ROUND(fraud_rate, 3) AS fraud_rate, ROUND(avg_risk_score, 3) AS avg_risk_score,
+               ROUND(density, 3) AS density, severity, ROUND(total_amount, 2) AS total_amount,
+               members
+        FROM {CATALOG}.{SCHEMA}.platinum_fraud_rings
+        WHERE {where}
+        ORDER BY fraud_rate DESC, size DESC
+        LIMIT {limit}
+        """
+
+        response = w.statement_execution.execute_statement(
+            warehouse_id=WAREHOUSE_ID, statement=query, catalog=CATALOG, schema=SCHEMA,
+        )
+
+        rings = []
+        if response.result and response.result.data_array:
+            columns = [col.name for col in response.manifest.schema.columns]
+            for row in response.result.data_array:
+                rings.append(dict(zip(columns, row)))
+
+        return json.dumps({"rings": rings, "total_returned": len(rings)}, ensure_ascii=False, default=str)
+
+    except Exception as e:
+        logger.error(f"Fraud ring lookup failed: {e}")
+        return json.dumps({"error": str(e), "rings": []})
+
+
+@tool
+def lookup_sender_profile(sender_id: str) -> str:
+    """
+    Get detailed risk profile for a specific sender account.
+
+    Args:
+        sender_id: The sender UPI ID to look up (e.g., 'sender_1234@upi' or 'mule_abc123@upi')
+
+    Returns:
+        JSON with sender's transaction history, fraud count, risk scores, behavioral patterns.
+    """
+    if not WAREHOUSE_ID:
+        return json.dumps({"error": "Warehouse not configured"})
+
+    try:
+        w = get_user_workspace_client()
+        query = f"""
+        SELECT sender_id, total_transactions, ROUND(total_amount_sent, 2) AS total_amount,
+               fraud_count, ROUND(personal_fraud_rate, 3) AS fraud_rate,
+               ROUND(avg_risk_score, 3) AS avg_risk_score,
+               ROUND(composite_risk_score, 3) AS composite_risk,
+               ROUND(late_night_pct, 1) AS late_night_pct,
+               ROUND(weekend_pct, 1) AS weekend_pct,
+               unique_receivers, unique_categories
+        FROM {CATALOG}.{SCHEMA}.platinum_sender_profiles
+        WHERE sender_id = :sender_id
+        """
+        params = [StatementParameterListItem(name="sender_id", value=sender_id.strip(), type="STRING")]
+
+        response = w.statement_execution.execute_statement(
+            warehouse_id=WAREHOUSE_ID, statement=query, catalog=CATALOG, schema=SCHEMA, parameters=params,
+        )
+
+        if response.result and response.result.data_array:
+            columns = [col.name for col in response.manifest.schema.columns]
+            profile = dict(zip(columns, response.result.data_array[0]))
+            return json.dumps({"profile": profile}, ensure_ascii=False, default=str)
+
+        return json.dumps({"error": f"No profile found for {sender_id}", "profile": {}})
+
+    except Exception as e:
+        logger.error(f"Sender profile lookup failed: {e}")
+        return json.dumps({"error": str(e), "profile": {}})
+
+
 # ============================================================
 # MCP TOOL LOADING
 # ============================================================
@@ -484,7 +589,7 @@ def get_agent():
     if _agent is not None:
         return _agent
 
-    custom_tools = [get_current_time, lookup_fraud_alerts, check_loan_eligibility, fraud_recovery_guide]
+    custom_tools = [get_current_time, lookup_fraud_alerts, check_loan_eligibility, fraud_recovery_guide, lookup_fraud_rings, lookup_sender_profile]
     mcp_tools = _load_mcp_tools()
     all_tools = custom_tools + mcp_tools
 

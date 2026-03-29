@@ -1,13 +1,15 @@
 """
-Digital-Artha: Financial Intelligence Platform
+BlackIce: Financial Intelligence Platform
 Run: python3 chat_ui.py
 Public URL for judges: auto-generated via share=True
 """
 
 import gradio as gr
+import plotly.graph_objects as go
 import requests
 import json
 import os
+import time
 
 AGENT_URL = os.environ.get("AGENT_URL", "http://localhost:8000/invocations")
 DATABRICKS_HOST = ""
@@ -25,6 +27,23 @@ try:
                 elif k == "WAREHOUSE_ID": WAREHOUSE_ID = v
 except:
     pass
+
+# -- Plotly dark theme defaults --
+GOLD = "#c5a059"
+GOLD_LIGHT = "rgba(197,160,89,0.6)"
+GOLD_DIM = "rgba(197,160,89,0.15)"
+BG = "#0a0a0a"
+TEXT = "#ededed"
+TEXT_DIM = "#888888"
+GRID = "rgba(255,255,255,0.04)"
+PLOTLY_LAYOUT = dict(
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(family="Inter, sans-serif", color=TEXT, size=12),
+    margin=dict(l=50, r=20, t=40, b=50),
+    xaxis=dict(gridcolor=GRID, zerolinecolor=GRID),
+    yaxis=dict(gridcolor=GRID, zerolinecolor=GRID),
+)
 
 
 def query_sql(sql):
@@ -52,7 +71,6 @@ def call_agent(message, history):
         input_messages = []
         for h in history:
             if isinstance(h, dict) and "role" in h:
-                # Gradio 6 messages format: {"role": "user"/"assistant", "content": "..."}
                 role = h["role"]
                 text = str(h.get("content", ""))
                 if role == "user":
@@ -60,7 +78,6 @@ def call_agent(message, history):
                 elif role == "assistant" and text:
                     input_messages.append({"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": text}]})
             elif isinstance(h, (list, tuple)) and len(h) == 2:
-                # Legacy tuples format fallback
                 input_messages.append({"type": "message", "role": "user", "content": [{"type": "input_text", "text": str(h[0])}]})
                 if h[1]:
                     input_messages.append({"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": str(h[1])}]})
@@ -101,29 +118,225 @@ def make_table(cols, rows, max_rows=20):
     return md
 
 
+def _safe_float(v, default=0.0):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(v, default=0):
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return default
+
+
 # ============================================================
-# TAB 1: FRAUD COMMAND CENTER
+# KPIs — HTML cards instead of markdown table
 # ============================================================
 
 def get_kpis():
     cols, rows = query_sql("SELECT * FROM digital_artha.main.viz_kpis")
     if not rows:
-        return "Unable to connect to Databricks. Check your .env configuration."
+        return "<div style='color:#888; padding:20px;'>Unable to connect to Databricks. Check .env configuration.</div>"
     r = rows[0]
-    return f"""
-| Metric | Value |
-|--------|-------|
-| Total Transactions Analyzed | **{r[0]}** |
-| Flagged as Suspicious | **{r[1]}** |
-| Fraud Rate | **{r[2]}%** |
-| Total Amount at Risk | **₹{r[3]}** |
-| Anomaly Patterns Discovered | **{r[4]}** |
-| High Risk Senders | **{r[5]}** |
-| Government Schemes Indexed | **{r[6]}** |
-| RBI Circulars Searchable | **{r[7]}** |
-| Fraud Recovery Types | **{r[8]}** |
-"""
+    kpis = [
+        ("Transactions", f"{_safe_int(r[0]):,}", "Analyzed by ML ensemble"),
+        ("Flagged", str(r[1]), "Suspicious transactions"),
+        ("Fraud Rate", f"{r[2]}%", "Ensemble detection rate"),
+        ("Amount at Risk", f"\u20b9{r[3]}", "Total flagged volume"),
+        ("Patterns", str(r[4]), "Anomaly types found"),
+        ("Risky Senders", str(r[5]), "High composite risk"),
+        ("Schemes", str(r[6]), "Gov programs indexed"),
+        ("RBI Circulars", str(r[7]), "Searchable via RAG"),
+        ("Recovery Types", str(r[8]), "Fraud recovery guides"),
+    ]
+    cards = ""
+    for label, value, sub in kpis:
+        cards += f"""<div style="flex:1; min-width:140px; padding:20px 16px; border:1px solid rgba(197,160,89,0.12); border-radius:8px; background:rgba(255,255,255,0.015); text-align:center;">
+            <div style="font-family:'Montserrat',sans-serif; font-size:0.65em; text-transform:uppercase; letter-spacing:2px; color:#888; margin-bottom:8px;">{label}</div>
+            <div style="font-family:'Playfair Display',serif; font-size:1.8em; color:#c5a059; font-weight:400;">{value}</div>
+            <div style="font-size:0.7em; color:#555; margin-top:4px;">{sub}</div>
+        </div>"""
+    return f'<div style="display:flex; gap:12px; flex-wrap:wrap; margin:10px 0;">{cards}</div>'
 
+
+# ============================================================
+# CHARTS — Plotly visualizations from unused viz_ views
+# ============================================================
+
+def get_fraud_heatmap():
+    """Hour x Day fraud heatmap."""
+    cols, rows = query_sql("""
+    SELECT hour_of_day, day_of_week, fraud_rate_pct, total_txns, avg_fraud_risk
+    FROM digital_artha.main.viz_fraud_heatmap
+    ORDER BY day_of_week, hour_of_day
+    """)
+    if not rows:
+        return go.Figure().update_layout(title="No heatmap data", **PLOTLY_LAYOUT)
+
+    day_names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    # Build 7x24 matrix
+    matrix = [[0.0]*24 for _ in range(7)]
+    hover = [["" for _ in range(24)] for _ in range(7)]
+    for row in rows:
+        h = _safe_int(row[0])
+        d = _safe_int(row[1])
+        rate = _safe_float(row[2])
+        txns = _safe_int(row[3])
+        if 0 <= h < 24 and 0 <= d < 7:
+            matrix[d][h] = rate
+            hover[d][h] = f"Day: {day_names[d]}<br>Hour: {h}:00<br>Fraud Rate: {rate}%<br>Txns: {txns}"
+
+    fig = go.Figure(data=go.Heatmap(
+        z=matrix, x=list(range(24)), y=day_names,
+        text=hover, hoverinfo="text",
+        colorscale=[[0, "#0a0a0a"], [0.3, "#2a1a08"], [0.6, "#c5a059"], [1, "#ff4444"]],
+        colorbar=dict(title="Fraud %", tickfont=dict(color=TEXT_DIM)),
+    ))
+    fig.update_layout(
+        title="Fraud Heatmap: Hour x Day of Week",
+        xaxis_title="Hour of Day", yaxis_title="",
+        xaxis=dict(dtick=2, gridcolor=GRID),
+        yaxis=dict(gridcolor=GRID),
+        **PLOTLY_LAYOUT,
+    )
+    return fig
+
+
+def get_risk_distribution():
+    """Risk score distribution bar chart."""
+    cols, rows = query_sql("""
+    SELECT risk_bucket, txn_count, fraud_in_bucket
+    FROM digital_artha.main.viz_risk_distribution
+    ORDER BY risk_bucket
+    """)
+    if not rows:
+        return go.Figure().update_layout(title="No distribution data", **PLOTLY_LAYOUT)
+
+    buckets = [r[0] for r in rows]
+    counts = [_safe_int(r[1]) for r in rows]
+    frauds = [_safe_int(r[2]) for r in rows]
+    fraud_pcts = [round(f*100/max(c, 1), 1) for c, f in zip(counts, frauds)]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=buckets, y=counts, name="Total Txns",
+        marker_color=GOLD_DIM,
+        hovertemplate="%{x}<br>Transactions: %{y:,}<extra></extra>",
+    ))
+    fig.add_trace(go.Bar(
+        x=buckets, y=frauds, name="Fraud Txns",
+        marker_color="#ff4444",
+        hovertemplate="%{x}<br>Fraud: %{y:,}<extra></extra>",
+    ))
+    fig.update_layout(
+        title="Risk Score Distribution",
+        xaxis_title="Risk Score Bucket", yaxis_title="Transaction Count",
+        barmode="overlay", bargap=0.15,
+        legend=dict(font=dict(color=TEXT_DIM)),
+        **PLOTLY_LAYOUT,
+    )
+    return fig
+
+
+def get_monthly_trend():
+    """Monthly fraud trend line chart."""
+    cols, rows = query_sql("""
+    SELECT month, total_txns, fraud_txns, fraud_rate_pct, fraud_volume
+    FROM digital_artha.main.viz_monthly_trend
+    ORDER BY month
+    """)
+    if not rows:
+        return go.Figure().update_layout(title="No trend data", **PLOTLY_LAYOUT)
+
+    months = [str(r[0])[:7] for r in rows]
+    rates = [_safe_float(r[3]) for r in rows]
+    fraud_txns = [_safe_int(r[2]) for r in rows]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=months, y=rates, name="Fraud Rate %",
+        line=dict(color=GOLD, width=2), mode="lines+markers",
+        marker=dict(size=7),
+    ))
+    fig.add_trace(go.Bar(
+        x=months, y=fraud_txns, name="Fraud Txns",
+        marker_color="rgba(255,68,68,0.3)", yaxis="y2",
+    ))
+    fig.update_layout(
+        title="Monthly Fraud Trend",
+        xaxis_title="Month",
+        yaxis=dict(title="Fraud Rate %", gridcolor=GRID, side="left"),
+        yaxis2=dict(title="Fraud Txn Count", overlaying="y", side="right", gridcolor="rgba(0,0,0,0)"),
+        legend=dict(font=dict(color=TEXT_DIM)),
+        **PLOTLY_LAYOUT,
+    )
+    return fig
+
+
+def get_amount_comparison():
+    """Fraud vs normal amount distribution."""
+    cols, rows = query_sql("""
+    SELECT amount_range, fraud_count, normal_count
+    FROM digital_artha.main.viz_amount_comparison
+    """)
+    if not rows:
+        return go.Figure().update_layout(title="No amount data", **PLOTLY_LAYOUT)
+
+    ranges = [r[0] for r in rows]
+    fraud = [_safe_int(r[1]) for r in rows]
+    normal = [_safe_int(r[2]) for r in rows]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=ranges, y=normal, name="Normal", marker_color=GOLD_DIM))
+    fig.add_trace(go.Bar(x=ranges, y=fraud, name="Fraud", marker_color="#ff4444"))
+    fig.update_layout(
+        title="Transaction Amounts: Fraud vs Normal",
+        xaxis_title="Amount Range", yaxis_title="Count",
+        barmode="group", bargap=0.2,
+        legend=dict(font=dict(color=TEXT_DIM)),
+        **PLOTLY_LAYOUT,
+    )
+    return fig
+
+
+def get_category_risk_matrix():
+    """Category x time slot heatmap."""
+    cols, rows = query_sql("""
+    SELECT category, time_slot, fraud_rate_pct, total_txns
+    FROM digital_artha.main.viz_category_time_matrix
+    """)
+    if not rows:
+        return go.Figure().update_layout(title="No category data", **PLOTLY_LAYOUT)
+
+    categories = sorted(set(r[0] for r in rows if r[0]))
+    slots = sorted(set(r[1] for r in rows if r[1]))
+    cat_idx = {c: i for i, c in enumerate(categories)}
+    slot_idx = {s: i for i, s in enumerate(slots)}
+
+    matrix = [[0.0]*len(slots) for _ in range(len(categories))]
+    for row in rows:
+        c, s = row[0], row[1]
+        if c in cat_idx and s in slot_idx:
+            matrix[cat_idx[c]][slot_idx[s]] = _safe_float(row[2])
+
+    fig = go.Figure(data=go.Heatmap(
+        z=matrix, x=slots, y=categories,
+        colorscale=[[0, "#0a0a0a"], [0.3, "#2a1a08"], [0.6, "#c5a059"], [1, "#ff4444"]],
+        colorbar=dict(title="Fraud %", tickfont=dict(color=TEXT_DIM)),
+    ))
+    fig.update_layout(
+        title="Category x Time Slot Risk Matrix",
+        **PLOTLY_LAYOUT,
+    )
+    return fig
+
+
+# ============================================================
+# FRAUD ALERTS with drill-down
+# ============================================================
 
 def get_alerts(min_score, category, limit):
     where = "WHERE ensemble_flag = true"
@@ -134,7 +347,7 @@ def get_alerts(min_score, category, limit):
     sql = f"""
     SELECT transaction_id, ROUND(amount, 2) AS amount, category,
            ROUND(CAST(ensemble_score AS DOUBLE), 3) AS risk_score,
-           final_risk_tier AS tier, time_slot, location
+           final_risk_tier AS tier, time_slot, location, sender_id
     FROM digital_artha.main.gold_fraud_alerts_ml
     {where} ORDER BY CAST(ensemble_score AS DOUBLE) DESC LIMIT {int(limit)}
     """
@@ -145,40 +358,142 @@ def get_alerts(min_score, category, limit):
     return header + make_table(cols, rows)
 
 
+def load_categories():
+    """Fetch actual categories from the data."""
+    cols, rows = query_sql("""
+    SELECT DISTINCT category FROM digital_artha.main.gold_fraud_alerts_ml
+    WHERE category IS NOT NULL ORDER BY category
+    """)
+    cats = ["All"] + [r[0] for r in rows if r[0]]
+    return cats if len(cats) > 1 else ["All", "Education", "Shopping", "Utilities", "Food", "Grocery",
+                                        "Entertainment", "Fuel", "Healthcare", "Transport", "Other"]
+
+
+# ============================================================
+# ANOMALY PATTERNS with drill-down
+# ============================================================
+
 def get_patterns():
     cols, rows = query_sql("""
     SELECT anomaly_pattern AS Pattern, occurrence_count AS Count,
-           ROUND(avg_amount, 0) AS 'Avg ₹', ROUND(total_amount_at_risk, 0) AS 'Total ₹ at Risk',
-           unique_senders AS Senders
+           ROUND(avg_amount, 0) AS 'Avg Amount', ROUND(total_amount_at_risk, 0) AS 'Total at Risk',
+           unique_senders AS Senders, ROUND(pct_of_all_fraud, 1) AS 'Share %'
     FROM digital_artha.main.viz_anomaly_patterns ORDER BY occurrence_count DESC
     """)
-    return "**Anomaly Patterns Discovered by ML Ensemble:**\n\n" + make_table(cols, rows)
+    if not rows:
+        return "No pattern data found.", gr.update(choices=[], value=None)
+    pattern_names = [r[0] for r in rows if r[0]]
+    md = "**Anomaly Patterns Discovered by ML Ensemble:**\n\n" + make_table(cols, rows)
+    md += "\n\n*Select a pattern below to see the senders driving it.*"
+    return md, gr.update(choices=pattern_names, value=pattern_names[0] if pattern_names else None)
 
+
+def drill_pattern_senders(pattern_name):
+    """Show top senders for a specific anomaly pattern."""
+    if not pattern_name:
+        return "Select a pattern above first."
+    cols, rows = query_sql(f"""
+    SELECT sender_id, COUNT(*) AS flagged_txns, ROUND(SUM(amount), 0) AS total_amount,
+           ROUND(AVG(CAST(ensemble_score AS DOUBLE)), 3) AS avg_score
+    FROM digital_artha.main.gold_fraud_alerts_ml
+    WHERE anomaly_pattern = '{pattern_name}' AND ensemble_flag = true
+    GROUP BY sender_id ORDER BY flagged_txns DESC LIMIT 15
+    """)
+    if not rows:
+        return f"No senders found for pattern: {pattern_name}"
+    return f"**Senders driving '{pattern_name}':**\n\n" + make_table(cols, rows)
+
+
+# ============================================================
+# RISKY SENDERS with drill-down
+# ============================================================
 
 def get_risky_senders():
     cols, rows = query_sql("""
     SELECT sender_id, total_transactions AS txns, fraud_count AS frauds,
            ROUND(composite_risk, 3) AS risk, ROUND(late_night_pct, 1) AS 'night%',
-           ROUND(weekend_pct, 1) AS 'weekend%'
-    FROM digital_artha.main.viz_risky_senders LIMIT 15
+           ROUND(weekend_pct, 1) AS 'weekend%', unique_receivers AS receivers
+    FROM digital_artha.main.viz_risky_senders LIMIT 20
     """)
-    return "**Top 15 Riskiest Sender Accounts:**\n\n" + make_table(cols, rows)
+    if not rows:
+        return "No sender data found.", gr.update(choices=[], value=None)
+    sender_ids = [r[0] for r in rows if r[0]]
+    md = "**Top 20 Riskiest Sender Accounts:**\n\n" + make_table(cols, rows)
+    md += "\n\n*Select a sender below to see their flagged transactions.*"
+    return md, gr.update(choices=sender_ids, value=sender_ids[0] if sender_ids else None)
+
+
+def drill_sender_txns(sender_id):
+    """Show flagged transactions for a specific sender."""
+    if not sender_id:
+        return "Select a sender above first."
+    cols, rows = query_sql(f"""
+    SELECT transaction_id, ROUND(amount, 2) AS amount, category,
+           ROUND(CAST(ensemble_score AS DOUBLE), 3) AS score, final_risk_tier AS tier,
+           time_slot, location, receiver_id
+    FROM digital_artha.main.gold_fraud_alerts_ml
+    WHERE sender_id = '{sender_id}' AND ensemble_flag = true
+    ORDER BY CAST(ensemble_score AS DOUBLE) DESC LIMIT 20
+    """)
+    if not rows:
+        return f"No flagged transactions for sender: {sender_id}"
+    return f"**Flagged transactions for `{sender_id}`:**\n\n" + make_table(cols, rows)
 
 
 # ============================================================
-# TAB 2: INDIA STORY
+# FRAUD RINGS
+# ============================================================
+
+def get_fraud_rings():
+    cols, rows = query_sql("""
+    SELECT ring_id, size, fraud_transactions AS fraud_txns,
+           ROUND(fraud_rate, 2) AS fraud_rate, ROUND(avg_risk_score, 3) AS avg_risk,
+           ROUND(density, 2) AS density, severity, ROUND(total_amount, 0) AS total_amount
+    FROM digital_artha.main.platinum_fraud_rings
+    WHERE size >= 3
+    ORDER BY fraud_rate DESC, size DESC LIMIT 20
+    """)
+    if not rows:
+        return "No fraud rings detected."
+    md = "**Detected Fraud Rings** (graph analysis: connected components + PageRank)\n\n"
+    md += make_table(cols, rows)
+    return md
+
+
+def get_ring_members(ring_id):
+    """Show members of a specific fraud ring."""
+    if not ring_id:
+        return "Enter a ring ID above."
+    cols, rows = query_sql(f"""
+    SELECT ring_id, members, size, severity, ROUND(fraud_rate, 2) AS fraud_rate
+    FROM digital_artha.main.platinum_fraud_rings
+    WHERE ring_id = '{ring_id}'
+    """)
+    if not rows:
+        return f"Ring not found: {ring_id}"
+    r = rows[0]
+    members_str = str(r[1]) if r[1] else "N/A"
+    members_list = [m.strip() for m in members_str.split(",") if m.strip()]
+    md = f"### Ring `{r[0]}` — {r[2]} members | Severity: **{r[3]}** | Fraud Rate: **{r[4]}**\n\n"
+    md += "**Members:**\n"
+    for m in members_list[:30]:
+        md += f"- `{m}`\n"
+    if len(members_list) > 30:
+        md += f"\n*...and {len(members_list)-30} more*\n"
+    return md
+
+
+# ============================================================
+# INDIA STORY
 # ============================================================
 
 def get_india_story():
-    # UPI growth
     _, upi = query_sql("SELECT date, volume_millions FROM digital_artha.main.viz_upi_growth ORDER BY date DESC LIMIT 1")
     upi_latest = f"{upi[0][1]}M" if upi else "N/A"
 
-    # Bank fraud
     _, fraud = query_sql("SELECT SUM(loss_crore) FROM digital_artha.main.viz_bank_fraud WHERE fiscal_year = '2023-24'")
-    fraud_total = f"₹{fraud[0][0]} Cr" if fraud and fraud[0][0] else "N/A"
+    fraud_total = f"\u20b9{fraud[0][0]} Cr" if fraud and fraud[0][0] else "N/A"
 
-    # Vulnerability
     cols, vuln = query_sql("""
     SELECT state, ROUND(vulnerability_index, 2) AS vuln_index, vulnerability_level,
            ROUND(fraud_rate_pct, 2) AS fraud_rate, ROUND(internet_per_100, 0) AS internet
@@ -186,8 +501,7 @@ def get_india_story():
     WHERE vulnerability_index > 0 ORDER BY vulnerability_index DESC LIMIT 10
     """)
 
-    md = f"""
-**India's UPI ecosystem** processes **{upi_latest} transactions/month** — the world's largest real-time payment network.
+    md = f"""**India's UPI ecosystem** processes **{upi_latest} transactions/month** — the world's largest real-time payment network.
 
 **But fraud is rising.** Indian banks reported **{fraud_total}** in digital payment fraud losses in FY2023-24.
 
@@ -195,14 +509,14 @@ def get_india_story():
 
 """
     md += make_table(cols, vuln)
-    md += "\n*Vulnerability Index = fraud_risk × digital_divide × inclusion_gap*"
+    md += "\n*Vulnerability Index = fraud_risk x digital_divide x inclusion_gap*"
     return md
 
 
 def get_bank_fraud():
     cols, rows = query_sql("""
-    SELECT bank_name AS Bank, fraud_count AS Cases, ROUND(loss_crore, 1) AS 'Loss ₹Cr',
-           ROUND(recovered_crore, 1) AS 'Recovered ₹Cr',
+    SELECT bank_name AS Bank, fraud_count AS Cases, ROUND(loss_crore, 1) AS 'Loss Cr',
+           ROUND(recovered_crore, 1) AS 'Recovered Cr',
            ROUND(recovered_crore * 100 / NULLIF(loss_crore, 0), 0) AS 'Recovery%'
     FROM digital_artha.main.viz_bank_fraud WHERE fiscal_year = '2023-24'
     ORDER BY loss_crore DESC LIMIT 10
@@ -210,8 +524,58 @@ def get_bank_fraud():
     return "**Bank-wise Fraud Losses FY2023-24:**\n\n" + make_table(cols, rows)
 
 
+def get_upi_growth_chart():
+    """UPI volume growth over time."""
+    cols, rows = query_sql("""
+    SELECT date, volume_millions, value_crore
+    FROM digital_artha.main.viz_upi_growth ORDER BY date
+    """)
+    if not rows:
+        return go.Figure().update_layout(title="No UPI data", **PLOTLY_LAYOUT)
+
+    dates = [str(r[0]) for r in rows]
+    volumes = [_safe_float(r[1]) for r in rows]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=dates, y=volumes, fill="tozeroy",
+        line=dict(color=GOLD, width=2),
+        fillcolor=GOLD_DIM,
+    ))
+    fig.update_layout(
+        title="UPI Transaction Volume Growth (Millions/Month)",
+        xaxis_title="Date", yaxis_title="Volume (Millions)",
+        **PLOTLY_LAYOUT,
+    )
+    return fig
+
+
+def get_complaint_surge():
+    """RBI complaint surge data."""
+    cols, rows = query_sql("""
+    SELECT complaint_type, fiscal_year, complaints_received, pct_of_year
+    FROM digital_artha.main.viz_complaint_surge
+    ORDER BY fiscal_year, complaints_received DESC
+    """)
+    if not rows:
+        return "No complaint data available."
+
+    # Group by fiscal year
+    years = sorted(set(r[1] for r in rows if r[1]))
+    md = "**RBI Complaint Trends by Type:**\n\n"
+    for year in years[-3:]:  # Last 3 years
+        year_rows = [r for r in rows if r[1] == year][:8]
+        md += f"**{year}:**\n"
+        for r in year_rows:
+            pct = _safe_float(r[3])
+            bar_len = int(pct / 3)
+            md += f"- {r[0]}: {_safe_int(r[2]):,} ({pct}%) {'|' * bar_len}\n"
+        md += "\n"
+    return md
+
+
 # ============================================================
-# TAB 3: SCHEME FINDER
+# SCHEME FINDER
 # ============================================================
 
 def find_schemes(age, income, occupation, state, gender, language):
@@ -221,7 +585,7 @@ def find_schemes(age, income, occupation, state, gender, language):
 
 
 # ============================================================
-# TAB 4: FRAUD RECOVERY
+# FRAUD RECOVERY
 # ============================================================
 
 def get_recovery_guide(fraud_type):
@@ -232,19 +596,46 @@ def get_recovery_guide(fraud_type):
     cols, rows = query_sql(f"""
     SELECT fraud_type AS Type, rbi_rule AS 'RBI Rule',
            recovery_steps AS 'What To Do', report_to AS 'Report To',
-           time_limit_days AS 'Days Limit', max_liability_inr AS 'Max Liability ₹'
+           time_limit_days AS 'Days Limit', max_liability_inr AS 'Max Liability'
     FROM digital_artha.main.viz_recovery_guide {where}
     """)
     if not rows:
         return "No recovery guide found."
-    md = "**RBI-Mandated Fraud Recovery Steps:**\n\n"
+    md = ""
     for row in rows:
         md += f"### {row[0]}\n"
         md += f"**RBI Rule:** {row[1]}\n\n"
         md += f"**What to do:**\n{row[2]}\n\n"
         md += f"**Report to:** {row[3]}\n\n"
-        md += f"**Time limit:** {row[4]} days | **Max liability:** ₹{row[5]}\n\n---\n\n"
+        md += f"**Time limit:** {row[4]} days | **Max liability:** \u20b9{row[5]}\n\n---\n\n"
     return md
+
+
+def emergency_recovery():
+    """Immediate steps for any fraud victim."""
+    return """## IMMEDIATE STEPS — Do This NOW
+
+**1. Call your bank helpline immediately** — Block your UPI ID and linked bank account.
+
+**2. File online complaint** at [cybercrime.gov.in](https://cybercrime.gov.in) or call **1930** (National Cybercrime Helpline).
+
+**3. File FIR** at your nearest police station. Get a copy.
+
+**4. Report to RBI** via the [CMS portal](https://cms.rbi.org.in).
+
+---
+
+**RBI Zero Liability Rule:** If you report within **3 days**, you have **ZERO liability** for unauthorized transactions. After 3 days, liability increases.
+
+**Keep these ready:**
+- Transaction ID / UTR number
+- Date and time of fraud
+- Amount lost
+- Screenshots of messages/calls
+
+---
+*Select your specific fraud type below for detailed recovery steps, or talk to the AI Agent for personalized help.*
+"""
 
 
 # ============================================================
@@ -252,10 +643,6 @@ def get_recovery_guide(fraud_type):
 # ============================================================
 
 custom_css = """
-/* BlackIce Premium Elegance Theme */
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Montserrat:wght@300;400;500;600&family=Inter:wght@300;400;500&display=swap');
-
-/* BlackIce Premium Elegance Theme */
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Montserrat:wght@300;400;500;600&family=Inter:wght@300;400;500&display=swap');
 
 body { font-family: 'Inter', sans-serif !important; font-weight: 300 !important; background: #060606 !important; }
@@ -263,14 +650,7 @@ body { font-family: 'Inter', sans-serif !important; font-weight: 300 !important;
 
 h1, h2, h3, h4, h5, h6 { font-family: 'Playfair Display', serif !important; font-weight: 400 !important; }
 
-/* Subtitle */
-.elegant-subtitle {
-    font-family: 'Montserrat', sans-serif !important;
-    font-weight: 300;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: #888888;
-}
+.elegant-subtitle { font-family: 'Montserrat', sans-serif !important; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; color: #888888; }
 
 /* Glassmorphism Sticky Navbar */
 .tabs > .tab-nav { position: fixed; top: 0; left: 0; width: 100%; display: flex; justify-content: center; align-items: center; background: rgba(6, 6, 6, 0.6) !important; backdrop-filter: blur(15px) !important; -webkit-backdrop-filter: blur(15px) !important; z-index: 9999; border-bottom: 1px solid rgba(197, 160, 89, 0.15) !important; margin: 0 !important; padding: 5px 0 0 0 !important; box-shadow: 0 4px 30px rgba(0,0,0,0.5); }
@@ -289,32 +669,36 @@ a { color: #c5a059 !important; text-decoration: none; transition: opacity 0.2s; 
 a:hover { opacity: 0.7; }
 footer { display: none !important; }
 
-/* Glassy Buttons */
-.gr-button { min-height: 42px !important; padding: 0 32px !important; font-size: 0.7em !important; font-family: 'Montserrat', sans-serif !important; font-weight: 300 !important; letter-spacing: 3px !important; text-transform: uppercase !important; border-radius: 8px !important; box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important; backdrop-filter: blur(10px) !important; -webkit-backdrop-filter: blur(10px) !important; transition: all 0.3s ease !important; }
+/* Buttons */
+.gr-button { min-height: 42px !important; padding: 0 32px !important; font-size: 0.7em !important; font-family: 'Montserrat', sans-serif !important; font-weight: 300 !important; letter-spacing: 3px !important; text-transform: uppercase !important; border-radius: 8px !important; box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important; backdrop-filter: blur(10px) !important; transition: all 0.3s ease !important; }
 .gr-button-primary { background: rgba(197,160,89,0.15) !important; color: #c5a059 !important; border: 1px solid rgba(197,160,89,0.3) !important; }
-.gr-button-primary:hover { background: rgba(197, 160, 89, 0.25) !important; border-color: rgba(197, 160, 89, 0.6) !important; color: #fff !important; transform: translateY(-2px); }
+.gr-button-primary:hover { background: rgba(197,160,89,0.25) !important; border-color: rgba(197,160,89,0.6) !important; color: #fff !important; transform: translateY(-2px); }
 .gr-button-secondary { background: rgba(255,255,255,0.05) !important; color: #ededed !important; border: 1px solid rgba(255,255,255,0.1) !important; }
 .gr-button-secondary:hover { background: rgba(255,255,255,0.1) !important; color: #fff !important; border-color: rgba(255,255,255,0.3) !important; transform: translateY(-2px); }
 
 .gr-box, .gr-input, .gr-dropdown { min-height: 38px !important; font-size: 0.85em !important; border-radius: 0 !important; background-color: transparent !important; border: 1px solid rgba(255,255,255,0.1) !important; color: #fff !important; }
 .gr-box:focus-within, .gr-input:focus, .gr-dropdown:focus { border-color: #c5a059 !important; }
 
-/* Razor Thin Sliders - Fixed Alignment */
+/* Sliders */
 input[type="range"] { height: 1px !important; background: rgba(255,255,255,0.1) !important; -webkit-appearance: none !important; border-radius: 0 !important; margin: 15px 0 !important; outline: none !important; }
-input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none !important; appearance: none !important; width: 14px !important; height: 14px !important; background: #c5a059 !important; border-radius: 50% !important; cursor: pointer !important; margin-top: -4px !important; transition: transform 0.1s; }
-input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
-input[type="range"]::-moz-range-track { height: 1px !important; background: rgba(255,255,255,0.1) !important; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none !important; width: 14px !important; height: 14px !important; background: #c5a059 !important; border-radius: 50% !important; cursor: pointer !important; margin-top: -4px !important; }
 input[type="range"]::-moz-range-thumb { width: 14px !important; height: 14px !important; background: #c5a059 !important; border: none !important; border-radius: 50% !important; }
 
-/* Premium Chatbot Integration */
+/* Chat */
 div[class*='message'] { border-radius: 2px !important; font-family: 'Inter', sans-serif !important; font-weight: 300 !important; font-size: 0.95em !important; box-shadow: none !important; }
 div[class*='message'][class*='bot'] { background: rgba(255, 255, 255, 0.01) !important; border: 1px solid rgba(255,255,255,0.05) !important; border-left: 2px solid #c5a059 !important; padding: 12px 18px !important; }
 div[class*='message'][class*='user'] { background: rgba(197, 160, 89, 0.05) !important; border: 1px solid rgba(255,255,255,0.05) !important; border-right: 2px solid #c5a059 !important; color: #c5a059 !important; padding: 12px 18px !important; }
 
-/* Chat Input Styling */
 textarea { font-family: 'Inter', sans-serif !important; font-weight: 300 !important; letter-spacing: 0.5px; min-height: 40px !important; padding: 10px 14px !important; }
 div[class*='form'] > div { border-radius: 2px !important; }
 div[class*='form']:focus-within { border-color: #c5a059 !important; box-shadow: none !important; }
+
+/* Plotly charts: transparent bg */
+.js-plotly-plot .plotly .main-svg { background: transparent !important; }
+
+/* Emergency button */
+.emergency-btn { background: rgba(255,68,68,0.15) !important; color: #ff4444 !important; border: 1px solid rgba(255,68,68,0.4) !important; font-size: 0.85em !important; letter-spacing: 2px !important; }
+.emergency-btn:hover { background: rgba(255,68,68,0.3) !important; border-color: #ff4444 !important; }
 """
 
 theme = gr.themes.Monochrome(
@@ -325,46 +709,41 @@ theme = gr.themes.Monochrome(
     block_border_color="rgba(255,255,255,0.05)",
     border_color_primary="rgba(255,255,255,0.05)",
     border_color_accent="#c5a059",
-    
-    # Text
     body_text_color="#ededed",
     block_label_text_color="#888888",
     block_title_text_color="#ededed",
-    
-    # Inputs (Sliders, Dropdowns, Textboxes)
     input_background_fill="#0a0a0a",
     input_border_color="rgba(255,255,255,0.05)",
     input_border_color_focus="#c5a059",
     input_placeholder_color="#555555",
-    
-    # Selectable components (Radio, Checkbox, Slider)
     slider_color="#c5a059",
     checkbox_background_color_selected="#c5a059",
     checkbox_border_color_selected="#c5a059",
     radio_circle="rgba(255, 255, 255, 0.05)",
-    
-    # Buttons
     button_primary_background_fill="rgba(197, 160, 89, 0.15)",
     button_primary_text_color="#c5a059",
     button_primary_border_color="rgba(197, 160, 89, 0.3)",
-    
     button_secondary_background_fill="rgba(255, 255, 255, 0.05)",
     button_secondary_text_color="#ededed",
     button_secondary_border_color="rgba(255, 255, 255, 0.1)",
-    
-    # Radii
     block_radius="4px",
     input_radius="4px",
     button_large_radius="4px",
     button_small_radius="4px",
-
-    # Misc
     color_accent_soft="rgba(197, 160, 89, 0.05)",
-    panel_background_fill="#060606"
+    panel_background_fill="#060606",
 )
+
+# Load dynamic categories at startup
+try:
+    CATEGORIES = load_categories()
+except:
+    CATEGORIES = ["All", "Education", "Shopping", "Utilities", "Food", "Grocery",
+                   "Entertainment", "Fuel", "Healthcare", "Transport", "Other"]
 
 with gr.Blocks(title="BlackIce Platform") as demo:
 
+    # ---- HEADER ----
     gr.Markdown("""
     <div style="padding: 50px 0 30px 0; max-width: 800px;">
     <h1 style="font-size: 4.5em; margin: 0; color: #fff; line-height: 1.1; font-family: 'Playfair Display', serif; font-weight: 400; letter-spacing: -2px;">
@@ -373,12 +752,12 @@ with gr.Blocks(title="BlackIce Platform") as demo:
     <h3 class="elegant-subtitle" style="margin-top: 25px; font-size: 0.9em;">
     Financial Intelligence & Risk Analysis &mdash; Databricks Lakehouse
     </h3>
-    
     <div style="display: flex; gap: 24px; margin-top: 40px; font-family: 'Montserrat', sans-serif; font-size: 0.75em; color: #888; text-transform: uppercase; letter-spacing: 1.5px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 20px; flex-wrap: wrap;">
         <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> Threat Hunting</div>
         <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> RBI Directive DB</div>
         <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> Scheme Matching</div>
         <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> Recovery Ops</div>
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="color: #c5a059;">&loz;</span> Fraud Rings</div>
     </div>
     </div>
     <div style="width: 100%; height: 1px; background: rgba(255,255,255,0.05); margin-bottom: 40px;"></div>
@@ -386,126 +765,210 @@ with gr.Blocks(title="BlackIce Platform") as demo:
 
     with gr.Tabs():
 
-        # ---- TAB 0: HOME / FRAUD RECOVERY ----
+        # ================================================================
+        # TAB 0: HOME — Emergency Recovery + Overview
+        # ================================================================
         with gr.Tab("Home"):
-            
             gr.HTML("""
-            <div style="display: flex; gap: 24px; flex-wrap: wrap; margin: 20px 0 60px 0;">
+            <div style="display: flex; gap: 24px; flex-wrap: wrap; margin: 20px 0 40px 0;">
                 <div style="flex: 1; min-width: 250px; padding: 30px; border: 1px solid rgba(197,160,89,0.15); border-radius: 12px; background: rgba(255,255,255,0.02); backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
-                    <h3 style="color: #c5a059; margin-top: 0; font-family: 'Montserrat', sans-serif; letter-spacing: 1px; font-size: 1em; text-transform: uppercase;">⚡ Real-Time ML Ensemble</h3>
-                    <p style="color: #aaa; font-size: 0.9em; line-height: 1.6; font-weight: 300;">Streaming transaction analysis via Databricks Auto Loader, analyzing incoming topologies through Isolation Forests and explicit logic thresholds within 400ms.</p>
+                    <h3 style="color: #c5a059; margin-top: 0; font-family: 'Montserrat', sans-serif; letter-spacing: 1px; font-size: 1em; text-transform: uppercase;">Real-Time ML Ensemble</h3>
+                    <p style="color: #aaa; font-size: 0.9em; line-height: 1.6; font-weight: 300;">Streaming transaction analysis via Databricks Auto Loader. Isolation Forest + K-Means ensemble scoring with graph-based fraud ring detection.</p>
                 </div>
                 <div style="flex: 1; min-width: 250px; padding: 30px; border: 1px solid rgba(197,160,89,0.15); border-radius: 12px; background: rgba(255,255,255,0.02); backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
-                    <h3 style="color: #c5a059; margin-top: 0; font-family: 'Montserrat', sans-serif; letter-spacing: 1px; font-size: 1em; text-transform: uppercase;">🧠 Agentic MCP Network</h3>
-                    <p style="color: #aaa; font-size: 0.9em; line-height: 1.6; font-weight: 300;">A native AI agent armed with 7 external tools, seamlessly spanning Vector Databases for semantic RBI circular search and Live SQL query execution.</p>
+                    <h3 style="color: #c5a059; margin-top: 0; font-family: 'Montserrat', sans-serif; letter-spacing: 1px; font-size: 1em; text-transform: uppercase;">Agentic MCP Network</h3>
+                    <p style="color: #aaa; font-size: 0.9em; line-height: 1.6; font-weight: 300;">AI agent with 9 tools: Vector Search for RBI circulars, fraud ring queries, sender profiling, scheme matching, and live SQL analytics.</p>
                 </div>
                 <div style="flex: 1; min-width: 250px; padding: 30px; border: 1px solid rgba(197,160,89,0.15); border-radius: 12px; background: rgba(255,255,255,0.02); backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
-                    <h3 style="color: #c5a059; margin-top: 0; font-family: 'Montserrat', sans-serif; letter-spacing: 1px; font-size: 1em; text-transform: uppercase;">🛡️ RBI Legal Workflows</h3>
-                    <p style="color: #aaa; font-size: 0.9em; line-height: 1.6; font-weight: 300;">Automated scheme checking and recovery workflows strictly modeled against definitive Indian banking guidelines, protecting vulnerable citizens.</p>
+                    <h3 style="color: #c5a059; margin-top: 0; font-family: 'Montserrat', sans-serif; letter-spacing: 1px; font-size: 1em; text-transform: uppercase;">RBI Legal Workflows</h3>
+                    <p style="color: #aaa; font-size: 0.9em; line-height: 1.6; font-weight: 300;">Recovery workflows modeled against Indian banking guidelines. Zero-liability tracking, complaint routing, and step-by-step victim assistance.</p>
                 </div>
             </div>
-            <hr style="border-color: rgba(255,255,255,0.05); margin-bottom: 40px;"/>
             """)
-            
-            gr.Markdown("### Welcome to BlackIce. Select your issue for RBI-Mandated Recovery Steps, or talk to our Agent.")
+
+            # Emergency section
+            emergency_btn = gr.Button("I WAS JUST SCAMMED \u2014 GET IMMEDIATE HELP", variant="primary", elem_classes=["emergency-btn"])
+            emergency_out = gr.Markdown()
+            emergency_btn.click(fn=emergency_recovery, outputs=emergency_out)
+
+            gr.Markdown("---")
+            gr.Markdown("### Fraud Recovery Guide")
+            gr.Markdown("*Select your fraud type for RBI-mandated recovery steps:*")
             fraud_dd = gr.Dropdown(
                 ["All Types", "QR Code Scam", "Phishing / Fake Bank Call", "SIM Swap Fraud",
                  "Fake UPI Collect Request", "Remote Access / Screen Sharing", "Fake Merchant / Refund Fraud"],
-                value="All Types", label="Select Fraud Type"
+                value="All Types", label="Fraud Type"
             )
             with gr.Row():
                 recov_btn = gr.Button("Show Recovery Steps", variant="primary")
-                chat_jump_btn = gr.Button("Talk to AI Agent for Urgent Help", variant="secondary")
-            
+                chat_jump_btn = gr.Button("Talk to AI Agent for Help", variant="secondary")
             recov_out = gr.Markdown()
             recov_btn.click(fn=get_recovery_guide, inputs=fraud_dd, outputs=recov_out)
             chat_jump_btn.click(fn=None, js="() => { const btns = Array.from(document.querySelectorAll('button')); const t = btns.find(b => b.innerText.includes('Ask BlackIce')); if(t) t.click(); }")
 
-        # ---- TAB 1: COMMAND CENTER ----
+        # ================================================================
+        # TAB 1: COMMAND CENTER — KPIs + Alerts + Charts + Drill-downs
+        # ================================================================
         with gr.Tab("Command Center"):
-            kpi_output = gr.Markdown("Loading...")
-            with gr.Row():
-                refresh_btn = gr.Button("Refresh KPIs", variant="secondary", size="sm")
+            # KPI Cards
+            kpi_output = gr.HTML("Loading...")
+            refresh_btn = gr.Button("Refresh", variant="secondary", size="sm")
             refresh_btn.click(fn=get_kpis, outputs=kpi_output)
 
             gr.Markdown("---")
+
+            # ----- CHARTS ROW -----
+            gr.Markdown("### Analytics")
+            with gr.Row():
+                heatmap_plot = gr.Plot(label="Fraud Heatmap")
+                risk_dist_plot = gr.Plot(label="Risk Distribution")
+            with gr.Row():
+                trend_plot = gr.Plot(label="Monthly Trend")
+                amount_plot = gr.Plot(label="Amount Distribution")
+
+            with gr.Row():
+                load_charts_btn = gr.Button("Load All Charts", variant="primary")
+
+            def load_all_charts():
+                return get_fraud_heatmap(), get_risk_distribution(), get_monthly_trend(), get_amount_comparison()
+
+            load_charts_btn.click(fn=load_all_charts, outputs=[heatmap_plot, risk_dist_plot, trend_plot, amount_plot])
+
+            gr.Markdown("---")
+
+            # ----- ALERT SEARCH -----
             gr.Markdown("### Fraud Alert Search")
             with gr.Row():
                 score_slider = gr.Slider(0, 1, value=0.3, step=0.05, label="Min Risk Score")
-                cat_dd = gr.Dropdown(["All", "Education", "Shopping", "Utilities", "Food", "Grocery",
-                                      "Entertainment", "Fuel", "Healthcare", "Transport", "Other"],
-                                     value="All", label="Category")
+                cat_dd = gr.Dropdown(CATEGORIES, value="All", label="Category")
                 limit_sl = gr.Slider(5, 50, value=15, step=5, label="Results")
             search_btn = gr.Button("Search Alerts", variant="primary")
             alerts_out = gr.Markdown()
             search_btn.click(fn=get_alerts, inputs=[score_slider, cat_dd, limit_sl], outputs=alerts_out)
 
             gr.Markdown("---")
+
+            # ----- PATTERNS + DRILL-DOWN -----
             with gr.Row():
                 with gr.Column():
-                    pat_btn = gr.Button("Show Anomaly Patterns", size="sm")
+                    gr.Markdown("### Anomaly Patterns")
+                    pat_btn = gr.Button("Load Patterns", size="sm", variant="secondary")
                     pat_out = gr.Markdown()
-                    pat_btn.click(fn=get_patterns, outputs=pat_out)
-                with gr.Column():
-                    risk_btn = gr.Button("Show Risky Senders", size="sm")
-                    risk_out = gr.Markdown()
-                    risk_btn.click(fn=get_risky_senders, outputs=risk_out)
+                    pattern_dd = gr.Dropdown([], label="Drill into Pattern", interactive=True)
+                    pat_drill_out = gr.Markdown()
 
-        # ---- TAB 2: ASK AGENT ----
+                    pat_btn.click(fn=get_patterns, outputs=[pat_out, pattern_dd])
+                    pattern_dd.change(fn=drill_pattern_senders, inputs=pattern_dd, outputs=pat_drill_out)
+
+                with gr.Column():
+                    gr.Markdown("### Risky Senders")
+                    risk_btn = gr.Button("Load Senders", size="sm", variant="secondary")
+                    risk_out = gr.Markdown()
+                    sender_dd = gr.Dropdown([], label="Drill into Sender", interactive=True)
+                    sender_drill_out = gr.Markdown()
+
+                    risk_btn.click(fn=get_risky_senders, outputs=[risk_out, sender_dd])
+                    sender_dd.change(fn=drill_sender_txns, inputs=sender_dd, outputs=sender_drill_out)
+
+            gr.Markdown("---")
+
+            # ----- FRAUD RINGS -----
+            gr.Markdown("### Fraud Ring Detection")
+            gr.Markdown("*Graph analysis: Connected components + PageRank on transaction network*")
+            with gr.Row():
+                rings_btn = gr.Button("Load Fraud Rings", variant="primary")
+                ring_id_input = gr.Textbox(label="Ring ID (copy from table)", placeholder="e.g. ring_0")
+                ring_members_btn = gr.Button("Show Members", variant="secondary")
+            rings_out = gr.Markdown()
+            ring_members_out = gr.Markdown()
+            rings_btn.click(fn=get_fraud_rings, outputs=rings_out)
+            ring_members_btn.click(fn=get_ring_members, inputs=ring_id_input, outputs=ring_members_out)
+
+            # Category x Time matrix
+            gr.Markdown("---")
+            gr.Markdown("### Category x Time Slot Risk")
+            cat_matrix_plot = gr.Plot()
+            cat_matrix_btn = gr.Button("Load Category Matrix", size="sm", variant="secondary")
+            cat_matrix_btn.click(fn=get_category_risk_matrix, outputs=cat_matrix_plot)
+
+        # ================================================================
+        # TAB 2: ASK AGENT
+        # ================================================================
         with gr.Tab("Ask BlackIce"):
-            gr.Markdown("### Intelligent Agent Workspace — 7 Tools | Hindi Support | MCP Protocol")
+            gr.Markdown("### Intelligent Agent \u2014 9 Tools | Hindi Support | MCP Protocol")
+            gr.Markdown("*Ask about fraud alerts, fraud rings, sender profiles, RBI circulars, government schemes, or recovery steps.*")
             gr.ChatInterface(
                 fn=call_agent,
                 examples=[
                     "Show me the top 5 highest risk fraud alerts",
+                    "What fraud rings have been detected? Show the most severe ones",
+                    "Look up the risk profile for sender_1234@upi",
                     "I was scammed via QR code. What should I do?",
                     "What are the RBI guidelines for UPI fraud prevention?",
                     "Which merchant categories have the highest fraud rate?",
                     "I am a 25 year old farmer from UP earning 2 lakh. What schemes can I apply for?",
-                    "यूपीआई फ्रॉड से कैसे बचें?",
-                    "मैं एक 30 साल की महिला हूं, महाराष्ट्र से, आय 1.5 लाख। कौन सी योजनाएं हैं?",
+                    "\u092f\u0942\u092a\u0940\u0906\u0908 \u092b\u094d\u0930\u0949\u0921 \u0938\u0947 \u0915\u0948\u0938\u0947 \u092c\u091a\u0947\u0902?",
+                    "\u092e\u0948\u0902 \u090f\u0915 30 \u0938\u093e\u0932 \u0915\u0940 \u092e\u0939\u093f\u0932\u093e \u0939\u0942\u0902, \u092e\u0939\u093e\u0930\u093e\u0937\u094d\u091f\u094d\u0930 \u0938\u0947, \u0906\u092f 1.5 \u0932\u093e\u0916\u0964 \u0915\u094c\u0928 \u0938\u0940 \u092f\u094b\u091c\u0928\u093e\u090f\u0902 \u0939\u0948\u0902?",
                 ],
             )
 
-        # ---- TAB 3: INDIA STORY ----
+        # ================================================================
+        # TAB 3: INDIA STORY
+        # ================================================================
         with gr.Tab("India Story"):
-            story_out = gr.Markdown("Loading...")
+            story_out = gr.Markdown("*Click below to load India's digital payment landscape.*")
             with gr.Row():
-                story_btn = gr.Button("Load India's Digital Payment Story", variant="primary")
+                story_btn = gr.Button("Load India Story", variant="primary")
                 bank_btn = gr.Button("Bank Fraud Losses", variant="secondary")
+                complaint_btn = gr.Button("RBI Complaints", variant="secondary")
             story_btn.click(fn=get_india_story, outputs=story_out)
+
             bank_out = gr.Markdown()
             bank_btn.click(fn=get_bank_fraud, outputs=bank_out)
 
-        # ---- TAB 4: SCHEME FINDER ----
+            complaint_out = gr.Markdown()
+            complaint_btn.click(fn=get_complaint_surge, outputs=complaint_out)
+
+            gr.Markdown("---")
+            gr.Markdown("### UPI Growth Trajectory")
+            upi_chart = gr.Plot()
+            upi_chart_btn = gr.Button("Load UPI Growth Chart", size="sm", variant="secondary")
+            upi_chart_btn.click(fn=get_upi_growth_chart, outputs=upi_chart)
+
+        # ================================================================
+        # TAB 4: SCHEME FINDER
+        # ================================================================
         with gr.Tab("Scheme Finder"):
-            gr.Markdown("### Government Scheme Eligibility — 170+ Programs Indexed")
+            gr.Markdown("### Government Scheme Eligibility \u2014 170+ Programs Indexed")
+            gr.Markdown("*Enter your details to find schemes you qualify for. The AI agent will explain each match.*")
             with gr.Row():
                 age_in = gr.Number(value=25, label="Age", minimum=18, maximum=100)
-                income_in = gr.Number(value=150000, label="Annual Income (₹)")
+                income_in = gr.Number(value=150000, label="Annual Income (\u20b9)")
             with gr.Row():
                 occ_in = gr.Dropdown(["farmer", "street_vendor", "artisan", "student", "salaried",
-                                      "self_employed", "entrepreneur", "daily_wage", "fisherman"],
+                                      "self_employed", "entrepreneur", "daily_wage", "fisherman",
+                                      "homemaker", "teacher", "merchant"],
                                      value="farmer", label="Occupation")
                 state_in = gr.Dropdown(["Maharashtra", "Uttar Pradesh", "Tamil Nadu", "Karnataka",
                                         "Delhi", "Gujarat", "Rajasthan", "West Bengal", "Bihar",
                                         "Andhra Pradesh", "Telangana", "Kerala", "Madhya Pradesh",
-                                        "Punjab", "Haryana", "Odisha", "Jharkhand", "Assam"],
+                                        "Punjab", "Haryana", "Odisha", "Jharkhand", "Assam",
+                                        "Chhattisgarh", "Uttarakhand", "Goa", "Tripura",
+                                        "Meghalaya", "Manipur", "Nagaland", "Mizoram",
+                                        "Arunachal Pradesh", "Sikkim", "Himachal Pradesh",
+                                        "Jammu and Kashmir", "Ladakh", "Puducherry",
+                                        "Chandigarh", "Andaman and Nicobar"],
                                        value="Maharashtra", label="State")
             with gr.Row():
                 gender_in = gr.Radio(["male", "female", "all"], value="all", label="Gender")
-                lang_in = gr.Dropdown(["English", "Hindi", "Marathi", "Tamil", "Telugu"],
+                lang_in = gr.Dropdown(["English", "Hindi", "Marathi", "Tamil", "Telugu", "Bengali", "Kannada"],
                                       value="English", label="Response Language")
             scheme_btn = gr.Button("Find Matching Schemes", variant="primary")
             scheme_out = gr.Markdown("Enter your details and click 'Find Matching Schemes'")
             scheme_btn.click(fn=find_schemes, inputs=[age_in, income_in, occ_in, state_in, gender_in, lang_in], outputs=scheme_out)
 
-
-
-
-
+    # Auto-load KPIs on page open
     demo.load(fn=get_kpis, outputs=kpi_output)
-    demo.load(fn=get_india_story, outputs=story_out)
 
 
 if __name__ == "__main__":
