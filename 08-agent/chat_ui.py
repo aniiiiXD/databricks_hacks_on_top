@@ -12,38 +12,61 @@ AGENT_URL = "http://localhost:8000/invocations"
 
 def chat(message, history):
     try:
-        messages = []
+        # Build input in MLflow ResponsesAgent format
+        input_messages = []
         for h in history:
             if isinstance(h, dict):
-                messages.append(h)
+                input_messages.append(h)
             elif isinstance(h, (list, tuple)) and len(h) == 2:
-                messages.append({"role": "user", "content": h[0]})
+                input_messages.append({
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": h[0]}]
+                })
                 if h[1]:
-                    messages.append({"role": "assistant", "content": h[1]})
-        messages.append({"role": "user", "content": message})
+                    input_messages.append({
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": h[1]}]
+                    })
+
+        # Add current message
+        input_messages.append({
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": message}]
+        })
+
+        payload = {"input": input_messages}
 
         response = requests.post(
             AGENT_URL,
-            json={"input": messages},
+            json=payload,
             headers={"Content-Type": "application/json"},
             timeout=120
         )
 
         if response.status_code == 200:
             data = response.json()
-            if isinstance(data, dict):
-                if "output" in data:
-                    output = data["output"]
-                    if isinstance(output, list):
-                        texts = [item.get("text", "") for item in output if isinstance(item, dict) and item.get("type") == "message"]
-                        return "\n".join(texts) if texts else json.dumps(output, indent=2)
-                    return str(output)
-                elif "choices" in data:
-                    return data["choices"][0]["message"]["content"]
-                return json.dumps(data, indent=2)
-            return str(data)
+            if isinstance(data, dict) and "output" in data:
+                output = data["output"]
+                if isinstance(output, list):
+                    texts = []
+                    for item in output:
+                        if isinstance(item, dict):
+                            content = item.get("content", [])
+                            if isinstance(content, list):
+                                for c in content:
+                                    if isinstance(c, dict) and "text" in c:
+                                        texts.append(c["text"])
+                            elif isinstance(content, str):
+                                texts.append(content)
+                    return "\n".join(texts) if texts else json.dumps(output, indent=2, default=str)
+                return str(output)
+            return json.dumps(data, indent=2, default=str)
         else:
             return f"Error {response.status_code}: {response.text[:500]}"
+
     except requests.exceptions.ConnectionError:
         return "Cannot connect to agent. Make sure `uv run start-server` is running on port 8000."
     except Exception as e:
@@ -53,7 +76,7 @@ def chat(message, history):
 demo = gr.ChatInterface(
     fn=chat,
     title="Digital-Artha: Financial Intelligence for India",
-    description="**UPI Fraud Detection** | **RBI Regulations** | **Loan Scheme Finder**\n\nTry: 'Show me fraud alerts' or 'What schemes for a farmer in UP?'",
+    description="**UPI Fraud Detection** | **RBI Regulations** | **Loan Scheme Finder**\n\nTry the examples below or ask anything about UPI fraud, RBI rules, or government schemes.",
     examples=[
         "Show me the top 5 highest risk fraud alerts",
         "What should I do if I was scammed via QR code?",

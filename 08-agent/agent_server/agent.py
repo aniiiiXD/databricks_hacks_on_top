@@ -27,6 +27,17 @@ from mlflow.types.responses import (
     to_chat_completions_input,
     create_text_delta,
 )
+import uuid
+
+
+def make_response(text: str) -> ResponsesAgentResponse:
+    """Create a ResponsesAgentResponse with proper structure."""
+    return ResponsesAgentResponse(output=[{
+        "type": "message",
+        "id": str(uuid.uuid4()),
+        "role": "assistant",
+        "content": [{"type": "output_text", "text": text}]
+    }])
 
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
@@ -421,6 +432,42 @@ def get_agent():
     return _agent
 
 
+def _extract_user_message(request: ResponsesAgentRequest) -> str:
+    """Extract the last user message from any request format."""
+    # Method 1: MLflow's built-in converter
+    try:
+        chat_input = to_chat_completions_input(request)
+        if chat_input and chat_input.get("messages"):
+            last = chat_input["messages"][-1]
+            content = last.get("content", "")
+            if isinstance(content, str):
+                return content
+            elif isinstance(content, list):
+                return " ".join(c.get("text", "") for c in content if isinstance(c, dict))
+    except Exception:
+        pass
+
+    # Method 2: Parse request.input directly
+    try:
+        if hasattr(request, "input") and request.input:
+            for item in reversed(request.input):
+                # Pydantic model with .role and .content
+                role = getattr(item, "role", None) or (item.get("role") if isinstance(item, dict) else None)
+                if role == "user":
+                    content = getattr(item, "content", None) or (item.get("content") if isinstance(item, dict) else None)
+                    if isinstance(content, str):
+                        return content
+                    elif isinstance(content, list):
+                        for c in content:
+                            text = getattr(c, "text", None) or (c.get("text") if isinstance(c, dict) else None)
+                            if text:
+                                return text
+    except Exception:
+        pass
+
+    return ""
+
+
 # ============================================================
 # MLflow Responses API Handlers
 # ============================================================
@@ -433,27 +480,10 @@ async def handle_invoke(request: ResponsesAgentRequest) -> ResponsesAgentRespons
     config = {"configurable": {"thread_id": session_id}}
 
     # Extract user message — handle multiple input formats
-    user_message = ""
-    try:
-        chat_input = to_chat_completions_input(request)
-        user_message = chat_input["messages"][-1]["content"] if chat_input["messages"] else ""
-    except (AttributeError, TypeError, KeyError):
-        # Fallback: extract from request.input directly
-        if hasattr(request, "input") and request.input:
-            inp = request.input
-            if isinstance(inp, list):
-                for item in reversed(inp):
-                    if isinstance(item, dict) and item.get("role") == "user":
-                        user_message = item.get("content", "")
-                        break
-                    elif isinstance(item, (list, tuple)) and len(item) >= 1:
-                        user_message = str(item[0]) if isinstance(item, tuple) else str(item[-1])
-                        break
-            elif isinstance(inp, str):
-                user_message = inp
+    user_message = _extract_user_message(request)
 
     if not user_message:
-        return ResponsesAgentResponse.from_text("I didn't receive a message. Please try again.")
+        return make_response("I didn't receive a message. Please try again.")
 
     try:
         result = await agent.ainvoke(
@@ -474,7 +504,7 @@ async def handle_invoke(request: ResponsesAgentRequest) -> ResponsesAgentRespons
         output_text = f"I encountered an error processing your request. Please try again. (Error: {type(e).__name__})"
 
     mlflow.update_current_trace(metadata={"session_id": session_id})
-    return ResponsesAgentResponse.from_text(output_text)
+    return make_response(output_text)
 
 
 @stream()
@@ -484,20 +514,7 @@ async def handle_stream(request: ResponsesAgentRequest):
     session_id = get_session_id(request)
     config = {"configurable": {"thread_id": session_id}}
 
-    user_message = ""
-    try:
-        chat_input = to_chat_completions_input(request)
-        user_message = chat_input["messages"][-1]["content"] if chat_input["messages"] else ""
-    except (AttributeError, TypeError, KeyError):
-        if hasattr(request, "input") and request.input:
-            inp = request.input
-            if isinstance(inp, list):
-                for item in reversed(inp):
-                    if isinstance(item, dict) and item.get("role") == "user":
-                        user_message = item.get("content", "")
-                        break
-            elif isinstance(inp, str):
-                user_message = inp
+    user_message = _extract_user_message(request)
 
     try:
         async for event in agent.astream(
