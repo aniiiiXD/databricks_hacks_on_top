@@ -985,7 +985,52 @@ with gr.Blocks(title="BlackIce Platform") as demo:
             rings_btn.click(fn=get_fraud_rings, outputs=rings_out)
             ring_members_btn.click(fn=get_ring_members, inputs=ring_id_input, outputs=ring_members_out)
 
-            # Category x Time matrix removed — cluttered the UI
+            # ----- STREAMING PIPELINE STATUS -----
+            gr.Markdown("---")
+            gr.Markdown("### Streaming Pipeline (Live Fraud Scoring)")
+            streaming_out = gr.Markdown("Loading streaming status...")
+
+            def get_streaming_status():
+                _, bronze = query_sql("SELECT COUNT(*) FROM digital_artha.main.streaming_bronze")
+                _, silver = query_sql("SELECT COUNT(*) FROM digital_artha.main.streaming_silver")
+                _, plat = query_sql("SELECT COUNT(*) FROM digital_artha.main.streaming_platinum")
+                _, alerts = query_sql("SELECT COUNT(*) FROM digital_artha.main.streaming_platinum WHERE final_risk_tier IN ('high', 'critical')")
+                _, recent = query_sql("""
+                    SELECT transaction_id, ROUND(amount, 0) AS amount, category,
+                           ROUND(ensemble_score, 3) AS risk_score, final_risk_tier, anomaly_pattern
+                    FROM digital_artha.main.streaming_platinum
+                    WHERE final_risk_tier IN ('high', 'medium', 'critical')
+                    ORDER BY ensemble_score DESC LIMIT 5
+                """)
+
+                b = bronze[0][0] if bronze else 0
+                s = silver[0][0] if silver else 0
+                p = plat[0][0] if plat else 0
+                a = alerts[0][0] if alerts else 0
+
+                md = f"""
+**Pipeline:** `Files → Auto Loader → Bronze ({b:,}) → Silver ({s:,}) → Platinum ({p:,})`
+
+**Processing:** Incremental, checkpoint-based, exactly-once semantics
+
+**Fraud Alerts from Stream:** {a} high/critical transactions detected
+
+| Feature | Status |
+|---------|--------|
+| Auto Loader (cloudFiles) | ✅ Ingests new files automatically |
+| Bronze → Silver | ✅ Quality checks (null IDs, invalid amounts) |
+| Silver → Platinum | ✅ ML scoring + anomaly pattern classification |
+| Checkpointing | ✅ Exactly-once, no duplicates |
+| Judge test | ✅ Drop a custom transaction, watch it flow through |
+
+"""
+                if recent:
+                    cols_r = ["TXN", "Amount", "Category", "Risk Score", "Tier", "Pattern"]
+                    md += "**Recent High-Risk Streamed Transactions:**\n\n"
+                    md += make_table(cols_r, recent)
+
+                md += "\n\n*To see live streaming: run `11-streaming-simulation.py` on Databricks. Each batch flows through all 3 tiers in real-time.*"
+                return md
 
         # ================================================================
         # TAB 2: ASK AGENT
@@ -1118,6 +1163,7 @@ with gr.Blocks(title="BlackIce Platform") as demo:
     demo.load(fn=load_all_charts, outputs=[heatmap_plot, risk_dist_plot, trend_plot, amount_plot])
     demo.load(fn=get_ring_network_graph, outputs=ring_graph_plot)
     demo.load(fn=load_india_page, outputs=[story_out, upi_chart])
+    demo.load(fn=get_streaming_status, outputs=streaming_out)
     # cat_matrix removed
 
 
