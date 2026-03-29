@@ -2,9 +2,9 @@
 
 ## Project Write-up (500 characters)
 
-Digital-Artha detects UPI fraud using an IsolationForest+KMeans ensemble on 250K transactions, answers RBI regulation queries via multilingual RAG over 80 real circulars, and matches citizens to 170 government schemes. Built on Databricks with 17+ platform features: Auto Loader, DLT pipeline, Delta Lake, Unity Catalog, Foundation Model API, Vector Search (MCP), Genie Space, Lakeview Dashboard. Real Indian data from RBI, NPCI, PMJDY. State Vulnerability Index reveals which states need help most.
+BlackIce detects UPI fraud via ML ensemble (separation score 2.128), discovers 150 fraud rings with graph analysis, streams live scoring through Bronze→Silver→Platinum, and searches RBI circulars in Hindi via RAG. 9-tool agent with MCP. 170 govt schemes matched. BhashaBench 100%. Built on Databricks Free Edition with 17+ features: Auto Loader, DLT, MLflow, Vector Search MCP, Genie MCP, Lakeview Dashboard. Real data from RBI, NPCI, PMJDY. State Vulnerability Index for India's most at-risk states.
 
-(498 characters)
+(499 characters)
 
 ---
 

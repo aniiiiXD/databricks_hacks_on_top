@@ -1,6 +1,6 @@
-# Digital-Artha: AI-Powered Financial Intelligence for India
+# BlackIce: AI-Powered Financial Intelligence for India
 
-**Detects UPI fraud using ML, answers RBI regulation questions in Hindi/English via RAG, and matches rural Indians to government loan schemes they qualify for — all on Databricks Free Edition.**
+**Detects UPI fraud using ML ensemble, discovers fraud rings via graph analysis, answers RBI regulation questions in Hindi/English via RAG, streams live fraud scoring through a Bronze→Silver→Platinum pipeline, and matches rural Indians to 170 government loan schemes — all on Databricks Free Edition.**
 
 > Bharat Bricks Hackathon 2026 | IIT Bombay | Track: Digital-Artha (Economy & Financial Inclusion)
 
@@ -79,7 +79,7 @@
 
 ## What It Does (1-2 sentences)
 
-Digital-Artha is a financial intelligence platform that detects UPI fraud using an IsolationForest + KMeans ensemble, lets users search 80 real RBI circulars via multilingual RAG, matches 170 government schemes to user profiles, and tells the story of India's digital payment revolution through real RBI/NPCI data — showing which states are most vulnerable to fraud and least served by financial inclusion programs.
+BlackIce is a financial intelligence platform that detects UPI fraud using an IsolationForest + KMeans ensemble, discovers fraud rings via NetworkX graph analysis (150 rings, 93 money mule hubs), streams live fraud scoring through a Bronze→Silver→Platinum pipeline, searches 80 real RBI circulars via multilingual RAG, matches 170 government schemes to user profiles, and tells the story of India's digital payment revolution — showing which states are most vulnerable.
 
 ---
 
@@ -87,15 +87,22 @@ Digital-Artha is a financial intelligence platform that detects UPI fraud using 
 
 | Metric | Value |
 |--------|-------|
-| Transactions analyzed | 750,000+ |
-| Fraud alerts flagged | 1,800+ |
-| Anomaly patterns discovered | 8 named patterns |
+| Transactions scored | 250,000 |
+| Anomaly separation (Cohen's d) | **2.128** (large effect) |
+| Anomalies detected | 446 (₹2.17 Crore at risk) |
+| Anomaly patterns discovered | 7 named patterns |
+| Fraud rings detected | 150 (57 with circular flows) |
+| Money mule hub accounts | 93 (via PageRank) |
+| Ring flow volume | ₹8.68 Crore |
 | Sender risk profiles | 5,000 |
-| RBI circulars searchable | 80 (real, scraped from rbi.org.in) |
+| BhashaBench score | **100% (20/20, English + Hindi)** |
+| RBI circulars searchable | 68 (real, scraped from rbi.org.in) |
 | Government schemes indexed | 170 (real, from myscheme.gov.in) |
-| States in vulnerability index | 10 (cross-referenced fraud × internet × Jan Dhan) |
-| Dashboard pages | 4 |
-| Agent tools | 6 (including MCP Vector Search + Genie) |
+| Streaming pipeline | Bronze → Silver → Platinum (incremental, exactly-once) |
+| Dashboard pages | 4+ |
+| Agent tools | 9 (6 custom + 3 MCP) |
+| MLflow runs logged | 5+ |
+| Databricks features | 17+ |
 
 ---
 
