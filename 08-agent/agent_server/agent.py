@@ -73,15 +73,18 @@ CAPABILITIES:
 3. **Loan & Scheme Eligibility** — Help users find government financial inclusion schemes they qualify for based on their age, income, occupation, state, and gender.
 4. **Financial Analytics** — Query UPI transaction data, fraud metrics, and trends using natural language.
 
+5. **Fraud Recovery Help** — If someone has been scammed, explain exactly what to do: who to report to, RBI liability rules, time limits, step-by-step recovery process.
+
 BEHAVIOR:
 - Respond in the user's language. If they write in Hindi, respond in Hindi. Same for Marathi, Tamil, etc.
 - Explain complex financial and regulatory concepts in simple terms that a first-generation bank user can understand.
-- Be warm and encouraging, especially for financial inclusion queries.
+- Be warm and encouraging, especially for financial inclusion queries. These people may be scared and confused.
 - Amounts are in Indian Rupees (₹). Format with commas: ₹1,50,000.
-- When citing RBI circulars, include the circular title and relevant section.
-- For fraud alerts, show the risk score and explain the risk factors (amount deviation, velocity, time of day, etc.).
+- When showing fraud alerts, format them clearly: Transaction ID, Amount, Category, Risk Score, and WHY it was flagged.
+- When citing RBI circulars, include the circular title.
 - Use available tools to provide data-backed answers. Do not guess statistics — query them.
-- If a tool is unavailable, explain what information you cannot access and suggest alternatives.
+- If someone says they were scammed, ALWAYS use the fraud_recovery_guide tool first. Show empathy, then give actionable steps.
+- If a tool fails, don't just say "error" — explain what you were trying to do and suggest an alternative.
 """
 
 # --- Conversation Memory ---
@@ -96,6 +99,71 @@ checkpointer = MemorySaver()
 def get_current_time() -> str:
     """Returns the current date and time in ISO format."""
     return datetime.now().isoformat()
+
+
+@tool
+def fraud_recovery_guide(fraud_type: str = "") -> str:
+    """
+    Get step-by-step recovery guidance for fraud victims.
+
+    Args:
+        fraud_type: Type of fraud (e.g., 'QR code scam', 'phishing', 'SIM swap',
+                    'remote access', 'fake UPI', 'merchant fraud'). Leave empty to get all types.
+
+    Returns:
+        JSON with recovery steps, RBI liability rules, who to report to, and time limits.
+    """
+    if not WAREHOUSE_ID:
+        return json.dumps({"error": "Warehouse not configured", "guides": []})
+
+    try:
+        w = get_user_workspace_client()
+
+        if fraud_type and fraud_type.strip():
+            query = f"""
+            SELECT fraud_type, description, rbi_rule, recovery_steps, report_to,
+                   time_limit_days, max_liability_inr, common_in_states
+            FROM {CATALOG}.{SCHEMA}.fraud_recovery_guide
+            WHERE LOWER(fraud_type) LIKE CONCAT('%', :fraud_type, '%')
+               OR LOWER(description) LIKE CONCAT('%', :fraud_type, '%')
+            """
+            from databricks.sdk.service.sql import StatementParameterListItem
+            params = [StatementParameterListItem(name="fraud_type", value=fraud_type.lower().strip(), type="STRING")]
+        else:
+            query = f"""
+            SELECT fraud_type, description, rbi_rule, recovery_steps, report_to,
+                   time_limit_days, max_liability_inr, common_in_states
+            FROM {CATALOG}.{SCHEMA}.fraud_recovery_guide
+            """
+            params = []
+
+        response = w.statement_execution.execute_statement(
+            warehouse_id=WAREHOUSE_ID,
+            statement=query,
+            catalog=CATALOG,
+            schema=SCHEMA,
+            parameters=params if params else None,
+        )
+
+        guides = []
+        if response.result and response.result.data_array:
+            columns = [col.name for col in response.manifest.schema.columns]
+            for row in response.result.data_array:
+                guides.append(dict(zip(columns, row)))
+
+        return json.dumps({
+            "guides": guides,
+            "total": len(guides),
+            "important": "Report fraud within 3 days for zero liability under RBI rules. Call your bank helpline FIRST.",
+        }, ensure_ascii=False, default=str)
+
+    except Exception as e:
+        logger.error(f"Recovery guide lookup failed: {e}")
+        return json.dumps({
+            "error": str(e),
+            "fallback": "If you were scammed: 1) Call your bank immediately 2) File complaint at cybercrime.gov.in 3) File FIR at police station. You have 3 days for zero liability under RBI rules.",
+            "guides": []
+        })
 
 
 @tool
@@ -416,7 +484,7 @@ def get_agent():
     if _agent is not None:
         return _agent
 
-    custom_tools = [get_current_time, lookup_fraud_alerts, check_loan_eligibility]
+    custom_tools = [get_current_time, lookup_fraud_alerts, check_loan_eligibility, fraud_recovery_guide]
     mcp_tools = _load_mcp_tools()
     all_tools = custom_tools + mcp_tools
 
