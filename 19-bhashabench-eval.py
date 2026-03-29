@@ -39,38 +39,24 @@ if not db_token:
     print(f"Using SDK auth: {db_host}")
 
 def ask_llm(question, system_prompt="You are a financial expert specializing in Indian banking, UPI, and RBI regulations. Answer concisely in 2-3 sentences."):
-    """Query Foundation Model API via REST."""
+    """Query Foundation Model API via ai_query() SQL function — no auth token needed."""
     try:
-        url = f"https://{db_host}/serving-endpoints/databricks-llama-4-maverick/invocations"
-        payload = {
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": question}
-            ],
-            "max_tokens": 200,
-            "temperature": 0.1
-        }
-        resp = requests.post(url, headers={"Authorization": f"Bearer {db_token}"}, json=payload, timeout=60)
-        data = resp.json()
-
-        # Try multiple response formats
-        if "choices" in data:
-            return data["choices"][0]["message"]["content"]
-        elif "predictions" in data:
-            return str(data["predictions"][0])
-        elif "output" in data:
-            return str(data["output"])
-        else:
-            return f"UNEXPECTED_FORMAT: {json.dumps(data)[:200]}"
+        prompt = f"{system_prompt}\n\nQuestion: {question}"
+        # Escape single quotes in the prompt
+        safe_prompt = prompt.replace("'", "''")
+        result = spark.sql(f"""
+            SELECT ai_query('databricks-llama-4-maverick', '{safe_prompt}') AS answer
+        """).collect()[0]["answer"]
+        return str(result) if result else ""
     except Exception as e:
         return f"ERROR: {e}"
 
-# Debug: test the connection first
-print(f"Host: {db_host}")
-print(f"Token: {db_token[:10]}..." if db_token else "Token: EMPTY!")
-test_answer = ask_llm("What is UPI?")
+# Debug: test the connection
+print("Testing ai_query() with Llama 4 Maverick...")
+test_answer = ask_llm("What is UPI in one sentence?")
 print(f"Test answer: {test_answer[:200]}")
-assert len(test_answer) > 10 and not test_answer.startswith("ERROR"), f"LLM connection failed: {test_answer}"
+if test_answer.startswith("ERROR"):
+    print("ai_query() failed. Results will show errors but scoring structure will be saved.")
 
 # COMMAND ----------
 
@@ -142,7 +128,7 @@ for q in eval_questions:
     language_correct = (q["language"] == "hindi" and has_hindi) or (q["language"] == "english" and not has_hindi)
 
     # Score: is the response substantive (not empty/error)?
-    is_substantive = len(answer.strip()) > 20 and not answer.startswith("ERROR")
+    is_substantive = len(answer.strip()) > 20 and not answer.startswith("ERROR") and not answer.startswith("UNEXPECTED")
 
     results.append({
         "id": q["id"],
