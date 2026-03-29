@@ -90,8 +90,19 @@ txn_stream = (spark.readStream
     .option("pathGlobFilter", "*transaction*")
     .load(source_path))
 
+# --- Fake Fraud Rings (JSON) ---
+synth_stream = (spark.readStream
+    .format("cloudFiles")
+    .option("cloudFiles.format", "json")
+    .option("cloudFiles.inferColumnTypes", "true")
+    .option("cloudFiles.schemaLocation", f"{checkpoint_base}/synth_schema")
+    .option("pathGlobFilter", "*synthetic_fraud_rings*")
+    .load(source_path))
+
+combined_stream = txn_stream.unionByName(synth_stream, allowMissingColumns=True)
+
 # Map Kaggle columns to our schema
-bronze_txns = (txn_stream
+bronze_txns = (combined_stream
     .select(
         F.col("`transaction id`").cast("string").alias("transaction_id"),
         F.col("`amount (INR)`").cast("double").alias("amount"),

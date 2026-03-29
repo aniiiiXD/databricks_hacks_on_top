@@ -277,7 +277,22 @@ a { color: #c5a059 !important; text-decoration: none; transition: opacity 0.2s; 
 a:hover { opacity: 0.7; }
 footer { display: none !important; }
 
-.prose strong { color: #fff !important; font-weight: 500; font-family: 'Montserrat', sans-serif; }
+/* Ultra-Premium Inputs & Buttons (Zero Chonk, Zero Radius) */
+.gr-button { min-height: 40px !important; padding: 0 24px !important; font-size: 0.75em !important; font-family: 'Montserrat', sans-serif !important; font-weight: 400 !important; letter-spacing: 2px !important; text-transform: uppercase !important; border-radius: 0 !important; box-shadow: none !important; transition: all 0.3s ease !important; }
+.gr-button-primary { background-color: transparent !important; color: #c5a059 !important; border: 1px solid #c5a059 !important; }
+.gr-button-primary:hover { background-color: #c5a059 !important; color: #000 !important; }
+.gr-button-secondary { background-color: transparent !important; color: #888 !important; border: 1px solid rgba(255,255,255,0.1) !important; }
+.gr-button-secondary:hover { color: #fff !important; border-color: rgba(255,255,255,0.3) !important; }
+
+.gr-box, .gr-input, .gr-dropdown { min-height: 38px !important; font-size: 0.85em !important; border-radius: 0 !important; background-color: transparent !important; border: 1px solid rgba(255,255,255,0.1) !important; color: #fff !important; }
+.gr-box:focus-within, .gr-input:focus, .gr-dropdown:focus { border-color: #c5a059 !important; }
+
+/* Razor Thin Sliders - Fixed Alignment */
+input[type="range"] { height: 1px !important; background: rgba(255,255,255,0.1) !important; -webkit-appearance: none !important; border-radius: 0 !important; margin: 15px 0 !important; outline: none !important; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none !important; appearance: none !important; width: 14px !important; height: 14px !important; background: #c5a059 !important; border-radius: 50% !important; cursor: pointer !important; margin-top: -4px !important; transition: transform 0.1s; }
+input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+input[type="range"]::-moz-range-track { height: 1px !important; background: rgba(255,255,255,0.1) !important; }
+input[type="range"]::-moz-range-thumb { width: 14px !important; height: 14px !important; background: #c5a059 !important; border: none !important; border-radius: 50% !important; }
 
 /* Premium Chatbot Integration */
 div[class*='message'] { border-radius: 2px !important; font-family: 'Inter', sans-serif !important; font-weight: 300 !important; font-size: 0.95em !important; box-shadow: none !important; }
@@ -285,7 +300,7 @@ div[class*='message'][class*='bot'] { background: rgba(255, 255, 255, 0.01) !imp
 div[class*='message'][class*='user'] { background: rgba(197, 160, 89, 0.05) !important; border: 1px solid rgba(255,255,255,0.05) !important; border-right: 2px solid #c5a059 !important; color: #c5a059 !important; padding: 12px 18px !important; }
 
 /* Chat Input Styling */
-textarea { font-family: 'Inter', sans-serif !important; font-weight: 300 !important; letter-spacing: 0.5px; }
+textarea { font-family: 'Inter', sans-serif !important; font-weight: 300 !important; letter-spacing: 0.5px; min-height: 40px !important; padding: 10px 14px !important; }
 div[class*='form'] > div { border-radius: 2px !important; }
 div[class*='form']:focus-within { border-color: #c5a059 !important; box-shadow: none !important; }
 """
@@ -314,18 +329,15 @@ theme = gr.themes.Monochrome(
     slider_color="#c5a059",
     checkbox_background_color_selected="#c5a059",
     checkbox_border_color_selected="#c5a059",
-    checkbox_background_color_selected_hover="#e2c884",
     radio_circle="rgba(255, 255, 255, 0.05)",
     
     # Buttons
     button_primary_background_fill="#c5a059",
     button_primary_text_color="#000000",
-    button_primary_background_fill_hover="#e2c884",
     button_primary_border_color="#c5a059",
     
     button_secondary_background_fill="#0f0f0f",
     button_secondary_text_color="#ededed",
-    button_secondary_background_fill_hover="#1a1a1a",
     button_secondary_border_color="rgba(255,255,255,0.05)",
     
     # Radii

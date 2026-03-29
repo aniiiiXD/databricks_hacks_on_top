@@ -162,8 +162,13 @@ def generate_transactions(num_rings=30):
 
 if __name__ == "__main__":
     txns = generate_transactions(150)  # Generates 150 clusters of heavy fraud rings
-    df = pd.DataFrame(txns)
-    output_path = os.path.join(os.path.dirname(__file__), "synthetic_fraud_rings.csv")
-    df.to_csv(output_path, index=False)
-    print(f"Generated {len(df)} topological transactions spanning 150 rings into {output_path}")
+    
+    import json
+    
+    output_path = os.path.join(os.path.dirname(__file__), "synthetic_fraud_rings.json")
+    with open(output_path, "w") as f:
+        for txn in txns:
+            f.write(json.dumps(txn) + "\n")
+            
+    print(f"Generated {len(txns)} transactions spanning 150 rings to {output_path}")
 
