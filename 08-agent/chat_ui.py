@@ -246,8 +246,11 @@ custom_css = """
 /* BlackIce Premium Elegance Theme */
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Montserrat:wght@300;400;500;600&family=Inter:wght@300;400;500&display=swap');
 
-body { font-family: 'Inter', sans-serif !important; font-weight: 300 !important; }
-.gradio-container { max-width: 100% !important; padding: 0 4% !important; }
+/* BlackIce Premium Elegance Theme */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Montserrat:wght@300;400;500;600&family=Inter:wght@300;400;500&display=swap');
+
+body { font-family: 'Inter', sans-serif !important; font-weight: 300 !important; background: #060606 !important; }
+.gradio-container { max-width: 100% !important; padding: 120px 4% 0 !important; background: radial-gradient(circle at 10% 20%, rgba(197, 160, 89, 0.25), transparent 50%), radial-gradient(circle at 90% 70%, rgba(197, 160, 89, 0.2), transparent 50%), #060606 !important; background-attachment: fixed !important; min-height: 100vh; }
 
 h1, h2, h3, h4, h5, h6 { font-family: 'Playfair Display', serif !important; font-weight: 400 !important; }
 
@@ -260,11 +263,11 @@ h1, h2, h3, h4, h5, h6 { font-family: 'Playfair Display', serif !important; font
     color: #888888;
 }
 
-/* Tabs */
-.tabs > .tab-nav { border-bottom: 1px solid rgba(255,255,255,0.05) !important; margin-bottom: 30px; }
-.tabs > .tab-nav > button { border: none !important; border-bottom: 1px solid transparent !important; background: transparent !important; color: #888888 !important; font-family: 'Montserrat', sans-serif !important; font-weight: 400; font-size: 0.9em; letter-spacing: 1px; text-transform: uppercase; padding-bottom: 15px; margin-right: 35px;}
-.tabs > .tab-nav > button.selected { border-bottom: 1px solid #c5a059 !important; color: #c5a059 !important; background: transparent !important; }
-.tabs > .tab-nav > button:hover:not(.selected) { color: #ededed !important; }
+/* Glassmorphism Sticky Navbar */
+.tabs > .tab-nav { position: fixed; top: 0; left: 0; width: 100%; display: flex; justify-content: center; align-items: center; background: rgba(6, 6, 6, 0.6) !important; backdrop-filter: blur(15px) !important; -webkit-backdrop-filter: blur(15px) !important; z-index: 9999; border-bottom: 1px solid rgba(197, 160, 89, 0.15) !important; margin: 0 !important; padding: 5px 0 0 0 !important; box-shadow: 0 4px 30px rgba(0,0,0,0.5); }
+.tabs > .tab-nav > button { border: none !important; background: transparent !important; color: rgba(255,255,255,0.4) !important; font-family: 'Montserrat', sans-serif !important; font-weight: 300 !important; font-size: 0.75em !important; letter-spacing: 3px !important; text-transform: uppercase !important; padding: 20px 15px !important; margin: 0 15px !important; transition: all 0.4s ease !important; border-bottom: 2px solid transparent !important; }
+.tabs > .tab-nav > button.selected { border-bottom: 2px solid #c5a059 !important; color: #c5a059 !important; }
+.tabs > .tab-nav > button:hover:not(.selected) { color: #fff !important; }
 
 /* Tables */
 table { border-collapse: collapse; width: 100%; margin-top: 15px; font-family: 'Inter', sans-serif; font-size: 0.85em; font-weight: 300; border-radius: 2px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
@@ -277,12 +280,12 @@ a { color: #c5a059 !important; text-decoration: none; transition: opacity 0.2s; 
 a:hover { opacity: 0.7; }
 footer { display: none !important; }
 
-/* Ultra-Premium Inputs & Buttons (Zero Chonk, Zero Radius) */
-.gr-button { min-height: 40px !important; padding: 0 24px !important; font-size: 0.75em !important; font-family: 'Montserrat', sans-serif !important; font-weight: 400 !important; letter-spacing: 2px !important; text-transform: uppercase !important; border-radius: 0 !important; box-shadow: none !important; transition: all 0.3s ease !important; }
-.gr-button-primary { background-color: transparent !important; color: #c5a059 !important; border: 1px solid #c5a059 !important; }
-.gr-button-primary:hover { background-color: #c5a059 !important; color: #000 !important; }
-.gr-button-secondary { background-color: transparent !important; color: #888 !important; border: 1px solid rgba(255,255,255,0.1) !important; }
-.gr-button-secondary:hover { color: #fff !important; border-color: rgba(255,255,255,0.3) !important; }
+/* Glassy Buttons */
+.gr-button { min-height: 42px !important; padding: 0 32px !important; font-size: 0.7em !important; font-family: 'Montserrat', sans-serif !important; font-weight: 300 !important; letter-spacing: 3px !important; text-transform: uppercase !important; border-radius: 8px !important; box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important; backdrop-filter: blur(10px) !important; -webkit-backdrop-filter: blur(10px) !important; transition: all 0.3s ease !important; }
+.gr-button-primary { background: rgba(197,160,89,0.15) !important; color: #c5a059 !important; border: 1px solid rgba(197,160,89,0.3) !important; }
+.gr-button-primary:hover { background: rgba(197, 160, 89, 0.25) !important; border-color: rgba(197, 160, 89, 0.6) !important; color: #fff !important; transform: translateY(-2px); }
+.gr-button-secondary { background: rgba(255,255,255,0.05) !important; color: #ededed !important; border: 1px solid rgba(255,255,255,0.1) !important; }
+.gr-button-secondary:hover { background: rgba(255,255,255,0.1) !important; color: #fff !important; border-color: rgba(255,255,255,0.3) !important; transform: translateY(-2px); }
 
 .gr-box, .gr-input, .gr-dropdown { min-height: 38px !important; font-size: 0.85em !important; border-radius: 0 !important; background-color: transparent !important; border: 1px solid rgba(255,255,255,0.1) !important; color: #fff !important; }
 .gr-box:focus-within, .gr-input:focus, .gr-dropdown:focus { border-color: #c5a059 !important; }
@@ -332,13 +335,13 @@ theme = gr.themes.Monochrome(
     radio_circle="rgba(255, 255, 255, 0.05)",
     
     # Buttons
-    button_primary_background_fill="#c5a059",
-    button_primary_text_color="#000000",
-    button_primary_border_color="#c5a059",
+    button_primary_background_fill="rgba(197, 160, 89, 0.15)",
+    button_primary_text_color="#c5a059",
+    button_primary_border_color="rgba(197, 160, 89, 0.3)",
     
-    button_secondary_background_fill="#0f0f0f",
+    button_secondary_background_fill="rgba(255, 255, 255, 0.05)",
     button_secondary_text_color="#ededed",
-    button_secondary_border_color="rgba(255,255,255,0.05)",
+    button_secondary_border_color="rgba(255, 255, 255, 0.1)",
     
     # Radii
     block_radius="4px",
@@ -373,6 +376,41 @@ with gr.Blocks(title="BlackIce Platform", theme=theme, css=custom_css) as demo:
     """)
 
     with gr.Tabs():
+
+        # ---- TAB 0: HOME / FRAUD RECOVERY ----
+        with gr.Tab("Home"):
+            
+            gr.HTML("""
+            <div style="display: flex; gap: 24px; flex-wrap: wrap; margin: 20px 0 60px 0;">
+                <div style="flex: 1; min-width: 250px; padding: 30px; border: 1px solid rgba(197,160,89,0.15); border-radius: 12px; background: rgba(255,255,255,0.02); backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+                    <h3 style="color: #c5a059; margin-top: 0; font-family: 'Montserrat', sans-serif; letter-spacing: 1px; font-size: 1em; text-transform: uppercase;">⚡ Real-Time ML Ensemble</h3>
+                    <p style="color: #aaa; font-size: 0.9em; line-height: 1.6; font-weight: 300;">Streaming transaction analysis via Databricks Auto Loader, analyzing incoming topologies through Isolation Forests and explicit logic thresholds within 400ms.</p>
+                </div>
+                <div style="flex: 1; min-width: 250px; padding: 30px; border: 1px solid rgba(197,160,89,0.15); border-radius: 12px; background: rgba(255,255,255,0.02); backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+                    <h3 style="color: #c5a059; margin-top: 0; font-family: 'Montserrat', sans-serif; letter-spacing: 1px; font-size: 1em; text-transform: uppercase;">🧠 Agentic MCP Network</h3>
+                    <p style="color: #aaa; font-size: 0.9em; line-height: 1.6; font-weight: 300;">A native AI agent armed with 7 external tools, seamlessly spanning Vector Databases for semantic RBI circular search and Live SQL query execution.</p>
+                </div>
+                <div style="flex: 1; min-width: 250px; padding: 30px; border: 1px solid rgba(197,160,89,0.15); border-radius: 12px; background: rgba(255,255,255,0.02); backdrop-filter: blur(10px); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+                    <h3 style="color: #c5a059; margin-top: 0; font-family: 'Montserrat', sans-serif; letter-spacing: 1px; font-size: 1em; text-transform: uppercase;">🛡️ RBI Legal Workflows</h3>
+                    <p style="color: #aaa; font-size: 0.9em; line-height: 1.6; font-weight: 300;">Automated scheme checking and recovery workflows strictly modeled against definitive Indian banking guidelines, protecting vulnerable citizens.</p>
+                </div>
+            </div>
+            <hr style="border-color: rgba(255,255,255,0.05); margin-bottom: 40px;"/>
+            """)
+            
+            gr.Markdown("### Welcome to BlackIce. Select your issue for RBI-Mandated Recovery Steps, or talk to our Agent.")
+            fraud_dd = gr.Dropdown(
+                ["All Types", "QR Code Scam", "Phishing / Fake Bank Call", "SIM Swap Fraud",
+                 "Fake UPI Collect Request", "Remote Access / Screen Sharing", "Fake Merchant / Refund Fraud"],
+                value="All Types", label="Select Fraud Type"
+            )
+            with gr.Row():
+                recov_btn = gr.Button("Show Recovery Steps", variant="primary")
+                chat_jump_btn = gr.Button("Talk to AI Agent for Urgent Help", variant="secondary")
+            
+            recov_out = gr.Markdown()
+            recov_btn.click(fn=get_recovery_guide, inputs=fraud_dd, outputs=recov_out)
+            chat_jump_btn.click(fn=None, js="() => { const btns = Array.from(document.querySelectorAll('button')); const t = btns.find(b => b.innerText.includes('Ask BlackIce')); if(t) t.click(); }")
 
         # ---- TAB 1: COMMAND CENTER ----
         with gr.Tab("Command Center"):
@@ -409,6 +447,7 @@ with gr.Blocks(title="BlackIce Platform", theme=theme, css=custom_css) as demo:
             gr.Markdown("### Intelligent Agent Workspace — 7 Tools | Hindi Support | MCP Protocol")
             gr.ChatInterface(
                 fn=call_agent,
+                type="messages",
                 examples=[
                     "Show me the top 5 highest risk fraud alerts",
                     "I was scammed via QR code. What should I do?",
@@ -453,63 +492,9 @@ with gr.Blocks(title="BlackIce Platform", theme=theme, css=custom_css) as demo:
             scheme_out = gr.Markdown("Enter your details and click 'Find Matching Schemes'")
             scheme_btn.click(fn=find_schemes, inputs=[age_in, income_in, occ_in, state_in, gender_in, lang_in], outputs=scheme_out)
 
-        # ---- TAB 5: FRAUD RECOVERY ----
-        with gr.Tab("Fraud Recovery"):
-            gr.Markdown("### If You Were Scammed — RBI-Mandated Recovery Steps")
-            fraud_dd = gr.Dropdown(
-                ["All Types", "QR Code Scam", "Phishing / Fake Bank Call", "SIM Swap Fraud",
-                 "Fake UPI Collect Request", "Remote Access / Screen Sharing", "Fake Merchant / Refund Fraud"],
-                value="All Types", label="Select Fraud Type"
-            )
-            recov_btn = gr.Button("Show Recovery Steps", variant="primary")
-            recov_out = gr.Markdown()
-            recov_btn.click(fn=get_recovery_guide, inputs=fraud_dd, outputs=recov_out)
 
-        # ---- TAB 6: ABOUT ----
-        with gr.Tab("Architecture"):
-            gr.Markdown("""
-### System Architecture
 
-```
-Data Sources (9 real Indian datasets)
-  → Auto Loader (CSV/JSON ingestion)
-    → Bronze Layer (750K+ rows, PK constraints, CDF)
-      → Silver Layer (DLT EXPECT constraints, validated)
-        → Gold Layer (business-ready, liquid clustering)  [COLD]
-          → Platinum Layer (ML ensemble + patterns)       [WARM]
-            → Serving Layer                               [HOT]
-              ├── Dashboard (4 pages, 20+ widgets)
-              ├── Genie Space (NL queries)
-              ├── Agent (7 tools, MCP, Hindi)
-              └── This App (Gradio, public URL)
-```
 
-### ML Pipeline
-- **IsolationForest** (300 trees, 0.02 contamination) + **KMeans** (k=8)
-- **Ensemble**: 0.45×IF + 0.30×KM + 0.25×Rules → Risk tiers
-- **Stratified sampling**: All fraud preserved, normal sampled
-- **8 named anomaly patterns** discovered
-
-### Agent Tools (7)
-| Tool | Function |
-|------|----------|
-| Fraud Alert Lookup | Parameterized SQL via Databricks SDK |
-| Loan Eligibility | PySpark rules + LLM explanation |
-| Fraud Recovery Guide | RBI-mandated recovery steps |
-| RBI Circular Search | MCP Vector Search (FAISS) |
-| Genie Analytics | MCP Genie Space (NL → SQL) |
-| Genie Poll | Get async Genie results |
-| Current Time | Utility |
-
-### Databricks Features (17+)
-Delta Lake, Unity Catalog, Auto Loader, ETL Pipeline (DLT), Spark SQL,
-Foundation Model API, Vector Search (MCP), Genie Space (MCP),
-Lakeview Dashboard, Metric Views, Databricks SDK, Change Data Feed,
-Liquid Clustering, UC Tags, FAISS on Volumes, MCP Protocol, Apps Architecture
-
----
-*Bharat Bricks Hackathon 2026 | IIT Bombay*
-""")
 
     demo.load(fn=get_kpis, outputs=kpi_output)
     demo.load(fn=get_india_story, outputs=story_out)
