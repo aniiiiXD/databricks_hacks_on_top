@@ -80,7 +80,7 @@ except Exception as e:
     )
     SELECT
         DATE_ADD(s.last_date, CAST(seq.id AS INT)) AS ds,
-        ROUND(s.avg_rate + (RAND(seq.id) - 0.5) * s.std_rate, 2) AS fraud_rate,
+        ROUND(s.avg_rate + (RAND() - 0.5) * s.std_rate, 2) AS fraud_rate,
         ROUND(s.avg_rate - s.std_rate, 2) AS fraud_rate_lower,
         ROUND(s.avg_rate + s.std_rate, 2) AS fraud_rate_upper,
         'forecast' AS type
