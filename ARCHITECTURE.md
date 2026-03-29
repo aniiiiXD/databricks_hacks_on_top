@@ -1,5 +1,42 @@
 # BlackIce Architecture
 
+## Overview
+
+```
+                                    BlackIce
+         ┌────────────────────────────┼────────────────────────────┐
+         │                            │                            │
+    DETECT                       PREDICT                      PROTECT
+         │                            │                            │
+   ML Ensemble               Fraud Ring Graph            Victim Recovery
+  IF + KM + Rules         NetworkX + PageRank          6 fraud types
+  750K transactions         150 rings found           RBI liability rules
+  8 anomaly patterns        93 mule hubs              LLM explains in
+  Cohen's d = 2.128        Rs.8.68 Cr flagged          user's language
+         │                            │                            │
+         └────────────┬───────────────┘                            │
+                      │                                            │
+              STREAM (live)                                  INCLUDE
+                      │                                            │
+            Auto Loader →                                170 govt schemes
+            Bronze → Silver →                            matched by profile
+            Platinum (scored)                            LLM explains in
+            Exactly-once                                  5 languages
+            Real-time                                          │
+                      │                                        │
+                      └──────────────┬─────────────────────────┘
+                                     │
+                              SERVE (3 tiers)
+                      ┌──────────────┼──────────────┐
+                      │              │              │
+                    HOT           WARM           COLD
+                  9-tool        13 views       Delta tables
+                  agent        dashboard      liquid clustering
+                  1-5 sec       < 1 sec        5-30 sec
+```
+
+---
+
 ## 1. How All 17 Databricks Components Connect
 
 This is the master wiring diagram. Every arrow is a real data dependency in the system.
