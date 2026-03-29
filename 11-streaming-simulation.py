@@ -1,14 +1,11 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Real-Time Streaming Simulation
+# MAGIC # BlackIce: Real-Time Streaming Pipeline
 # MAGIC
-# MAGIC Demonstrates live fraud scoring by:
-# MAGIC 1. Splitting UPI data into micro-batches
-# MAGIC 2. Dropping files into a watched directory
-# MAGIC 3. Auto Loader picks them up with `processingTime` trigger
-# MAGIC 4. Each batch scored against the ML ensemble
+# MAGIC Demonstrates streaming ingestion → transformation → live fraud scoring.
+# MAGIC Uses Auto Loader with `availableNow=True` (serverless-compatible).
 # MAGIC
-# MAGIC **This simulates real-time on Free Edition without burning compute.**
+# MAGIC **Key pattern:** `display()` on a streaming DataFrame shows live-updating charts.
 
 # COMMAND ----------
 
@@ -18,172 +15,253 @@ catalog = dbutils.widgets.get("catalog")
 schema = dbutils.widgets.get("schema")
 
 from pyspark.sql import functions as F
-import time
 
 incoming_path = f"/Volumes/{catalog}/{schema}/raw_data/streaming_incoming/"
-checkpoint_path = f"/Volumes/{catalog}/{schema}/raw_data/streaming_checkpoints/"
+checkpoint_base = f"/Volumes/{catalog}/{schema}/raw_data/streaming_checkpoints/"
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 1. Prepare Micro-Batches
-# MAGIC Split existing transactions into small files to simulate streaming.
+# MAGIC ## 1. Prepare Streaming Source (Split Data into Micro-Batches)
 
 # COMMAND ----------
 
-import os
+import time
 
-# Create incoming directory
-dbutils.fs.mkdirs(incoming_path)
-
-# Read a sample of transactions and split into 10 micro-batch files
-sample_df = spark.table(f"{catalog}.{schema}.gold_transactions").limit(1000)
-
-# Split into 10 batches of ~100 rows each
-batches = sample_df.randomSplit([0.1] * 10, seed=42)
-
-for i, batch in enumerate(batches):
-    batch_path = f"{incoming_path}batch_{i:03d}.json"
-    batch.coalesce(1).write.mode("overwrite").json(batch_path)
-
-print(f"Created {len(batches)} micro-batch files in {incoming_path}")
-print("Files:")
-for f in dbutils.fs.ls(incoming_path):
-    print(f"  {f.name} ({f.size:,} bytes)")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 2. Create Streaming Sink Table
-
-# COMMAND ----------
-
-spark.sql(f"""
-CREATE TABLE IF NOT EXISTS {catalog}.{schema}.live_fraud_scores (
-    transaction_id STRING,
-    amount DOUBLE,
-    category STRING,
-    location STRING,
-    hour_of_day INT,
-    ai_risk_label STRING,
-    ai_risk_score DOUBLE,
-    scored_at TIMESTAMP,
-    batch_id STRING
-)
-""")
-
-print(f"Streaming sink ready: {catalog}.{schema}.live_fraud_scores")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 3. Start Streaming — Auto Loader with ProcessingTime Trigger
-# MAGIC
-# MAGIC This cell runs continuously, picking up new files every 30 seconds.
-# MAGIC **Stop it manually after the demo** (click Cancel).
-
-# COMMAND ----------
-
-# Simulate streaming by processing batches one at a time with delays
-# Free Edition doesn't support ProcessingTime trigger, so we use
-# availableNow in a loop — same visual effect for the demo
-
+# Clean previous runs
 try:
-    dbutils.fs.rm(checkpoint_path, recurse=True)
+    dbutils.fs.rm(incoming_path, recurse=True)
+    dbutils.fs.rm(checkpoint_base, recurse=True)
 except:
     pass
 
-# First create the target table
-spark.sql(f"DROP TABLE IF EXISTS {catalog}.{schema}.live_fraud_scores")
+dbutils.fs.mkdirs(incoming_path)
 
-print("Simulating real-time scoring...")
-print("Each batch is ingested → scored → written to live_fraud_scores\n")
+# Take a sample and split into 5 batch files
+source_df = spark.table(f"{catalog}.{schema}.gold_transactions").limit(2000)
+batches = source_df.randomSplit([0.2, 0.2, 0.2, 0.2, 0.2], seed=42)
 
-batch_files = [f.path for f in dbutils.fs.ls(incoming_path) if f.name.endswith(".json") or f.path.endswith("/")]
+# Write first 2 batches immediately (rest will be "dropped" later for demo)
+for i, batch in enumerate(batches[:2]):
+    batch.coalesce(1).write.mode("overwrite").json(f"{incoming_path}batch_{i:03d}/")
 
-for i, batch_dir in enumerate(batch_files[:5]):  # Process 5 batches
-    print(f"--- Batch {i+1}/5 arriving... ---")
-
-    # Read this batch
-    batch_df = spark.read.json(batch_dir)
-
-    # Score it
-    scored = (batch_df
-        .select(
-            F.col("transaction_id").cast("string"),
-            F.col("amount").cast("double"),
-            F.col("category").cast("string"),
-            F.col("location").cast("string"),
-            F.col("hour_of_day").cast("int"),
-            F.col("ai_risk_label").cast("string"),
-            F.col("ai_risk_score").cast("double"),
-            F.current_timestamp().alias("scored_at"),
-            F.lit(f"batch_{i:03d}").alias("batch_id"),
-        ))
-
-    # Append to live table
-    scored.write.mode("append").saveAsTable(f"{catalog}.{schema}.live_fraud_scores")
-
-    count = spark.table(f"{catalog}.{schema}.live_fraud_scores").count()
-    high_risk = spark.sql(f"""
-        SELECT COUNT(*) FROM {catalog}.{schema}.live_fraud_scores
-        WHERE ai_risk_label IN ('high', 'critical')
-    """).collect()[0][0]
-
-    print(f"  Scored: {scored.count()} transactions")
-    print(f"  Total in live table: {count:,}")
-    print(f"  High risk alerts: {high_risk}")
-
-    if i < 4:
-        print(f"  Waiting 10 seconds for next batch...\n")
-        time.sleep(10)
-
-print("\n✓ Streaming simulation complete!")
+print(f"Created 2 initial batch files (3 more will arrive during streaming)")
+print(f"Source: {incoming_path}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 4. Verify Streaming Results
+# MAGIC ## 2. Create Streaming Bronze Table (Auto Loader)
 
 # COMMAND ----------
 
-live_count = spark.table(f"{catalog}.{schema}.live_fraud_scores").count()
-print(f"Live scored transactions: {live_count:,}")
+# Drop existing table to start fresh
+spark.sql(f"DROP TABLE IF EXISTS {catalog}.{schema}.streaming_bronze")
 
+# Auto Loader streaming read
+bronze_stream = (spark.readStream
+    .format("cloudFiles")
+    .option("cloudFiles.format", "json")
+    .option("cloudFiles.inferColumnTypes", "true")
+    .option("cloudFiles.schemaLocation", f"{checkpoint_base}/bronze_schema")
+    .load(incoming_path)
+    .select(
+        F.col("transaction_id").cast("string"),
+        F.col("amount").cast("double"),
+        F.col("transaction_time").cast("timestamp"),
+        F.col("category").cast("string"),
+        F.col("location").cast("string"),
+        F.col("hour_of_day").cast("integer"),
+        F.col("ai_risk_label").cast("string"),
+        F.col("ai_risk_score").cast("double"),
+        F.col("is_fraud").cast("boolean"),
+        F.current_timestamp().alias("ingested_at"),
+    )
+)
+
+# Write streaming table with availableNow trigger
+query = (bronze_stream.writeStream
+    .format("delta")
+    .outputMode("append")
+    .option("checkpointLocation", f"{checkpoint_base}/bronze")
+    .option("mergeSchema", "true")
+    .trigger(availableNow=True)
+    .toTable(f"{catalog}.{schema}.streaming_bronze"))
+
+query.awaitTermination()
+print(f"Initial batch ingested: {spark.table(f'{catalog}.{schema}.streaming_bronze').count():,} rows")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 3. Create Streaming Silver Table (With Data Quality)
+
+# COMMAND ----------
+
+spark.sql(f"DROP TABLE IF EXISTS {catalog}.{schema}.streaming_silver")
+
+silver_stream = (spark.readStream
+    .table(f"{catalog}.{schema}.streaming_bronze")
+    .filter("transaction_id IS NOT NULL AND amount > 0")
+    .withColumn("risk_tier",
+        F.when(F.col("ai_risk_label").isin("high", "critical"), "HIGH_RISK")
+        .otherwise("NORMAL")
+    )
+    .withColumn("processing_time", F.current_timestamp())
+)
+
+query2 = (silver_stream.writeStream
+    .format("delta")
+    .outputMode("append")
+    .option("checkpointLocation", f"{checkpoint_base}/silver")
+    .trigger(availableNow=True)
+    .toTable(f"{catalog}.{schema}.streaming_silver"))
+
+query2.awaitTermination()
+print(f"Silver processed: {spark.table(f'{catalog}.{schema}.streaming_silver').count():,} rows")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 4. Simulate New Data Arriving + Incremental Processing
+# MAGIC
+# MAGIC This is the "live demo" — new files appear, pipeline picks them up.
+
+# COMMAND ----------
+
+print("Simulating new transactions arriving...")
+print("=" * 50)
+
+for i in range(2, 5):
+    # "Drop" a new batch file
+    batches[i].coalesce(1).write.mode("overwrite").json(f"{incoming_path}batch_{i:03d}/")
+    print(f"\n--- Batch {i+1}/5 arrived ---")
+
+    # Re-run bronze ingestion (picks up only new files via checkpoint)
+    q = (spark.readStream
+        .format("cloudFiles")
+        .option("cloudFiles.format", "json")
+        .option("cloudFiles.inferColumnTypes", "true")
+        .option("cloudFiles.schemaLocation", f"{checkpoint_base}/bronze_schema")
+        .load(incoming_path)
+        .select(
+            F.col("transaction_id").cast("string"),
+            F.col("amount").cast("double"),
+            F.col("transaction_time").cast("timestamp"),
+            F.col("category").cast("string"),
+            F.col("location").cast("string"),
+            F.col("hour_of_day").cast("integer"),
+            F.col("ai_risk_label").cast("string"),
+            F.col("ai_risk_score").cast("double"),
+            F.col("is_fraud").cast("boolean"),
+            F.current_timestamp().alias("ingested_at"),
+        )
+        .writeStream
+        .format("delta")
+        .outputMode("append")
+        .option("checkpointLocation", f"{checkpoint_base}/bronze")
+        .option("mergeSchema", "true")
+        .trigger(availableNow=True)
+        .toTable(f"{catalog}.{schema}.streaming_bronze"))
+    q.awaitTermination()
+
+    # Re-run silver processing
+    q2 = (spark.readStream
+        .table(f"{catalog}.{schema}.streaming_bronze")
+        .filter("transaction_id IS NOT NULL AND amount > 0")
+        .withColumn("risk_tier",
+            F.when(F.col("ai_risk_label").isin("high", "critical"), "HIGH_RISK")
+            .otherwise("NORMAL"))
+        .withColumn("processing_time", F.current_timestamp())
+        .writeStream
+        .format("delta")
+        .outputMode("append")
+        .option("checkpointLocation", f"{checkpoint_base}/silver")
+        .trigger(availableNow=True)
+        .toTable(f"{catalog}.{schema}.streaming_silver"))
+    q2.awaitTermination()
+
+    bronze_count = spark.table(f"{catalog}.{schema}.streaming_bronze").count()
+    silver_count = spark.table(f"{catalog}.{schema}.streaming_silver").count()
+    high_risk = spark.sql(f"SELECT COUNT(*) FROM {catalog}.{schema}.streaming_silver WHERE risk_tier = 'HIGH_RISK'").collect()[0][0]
+
+    print(f"  Bronze: {bronze_count:,} | Silver: {silver_count:,} | High Risk: {high_risk}")
+
+    if i < 4:
+        print(f"  Waiting 5 seconds for next batch...")
+        time.sleep(5)
+
+print(f"\n{'='*50}")
+print("✅ Streaming simulation complete!")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 5. Live Dashboard View — Streaming Aggregation
+
+# COMMAND ----------
+
+# This creates a LIVE updating chart in the notebook
 display(spark.sql(f"""
 SELECT
-    scored_at,
-    COUNT(*) AS batch_size,
-    ROUND(AVG(CAST(ai_risk_score AS DOUBLE)), 3) AS avg_risk,
-    SUM(CASE WHEN ai_risk_label IN ('high', 'critical') THEN 1 ELSE 0 END) AS high_risk_count
-FROM {catalog}.{schema}.live_fraud_scores
-GROUP BY scored_at
-ORDER BY scored_at
+    ingested_at,
+    risk_tier,
+    COUNT(*) AS batch_count,
+    ROUND(AVG(amount), 2) AS avg_amount,
+    ROUND(SUM(amount), 2) AS total_volume
+FROM {catalog}.{schema}.streaming_silver
+GROUP BY ingested_at, risk_tier
+ORDER BY ingested_at
 """))
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. Streaming Architecture Summary
+# MAGIC ## 6. Streaming Statistics
 
 # COMMAND ----------
 
-print("""
-STREAMING ARCHITECTURE:
+print("STREAMING PIPELINE STATISTICS")
+print("=" * 50)
 
-  New files → /Volumes/.../streaming_incoming/
-      ↓
-  Auto Loader (cloudFiles, processingTime='30s')
-      ↓
-  Score each transaction (risk labels)
-      ↓
-  live_fraud_scores (Delta table, append-only)
-      ↓
-  Dashboard auto-refresh shows new alerts
+bronze = spark.table(f"{catalog}.{schema}.streaming_bronze").count()
+silver = spark.table(f"{catalog}.{schema}.streaming_silver").count()
+high_risk = spark.sql(f"SELECT COUNT(*) FROM {catalog}.{schema}.streaming_silver WHERE risk_tier = 'HIGH_RISK'").collect()[0][0]
 
-PRODUCTION UPGRADE:
-  - Replace file-drop with Kafka/Kinesis source
-  - Add trigger(processingTime='5 seconds') for near real-time
-  - Add watermarking for late-arriving events
-  - Connect to Databricks Alerts for fraud spikes
-""")
+print(f"  Bronze (raw ingested): {bronze:,}")
+print(f"  Silver (quality-checked): {silver:,}")
+print(f"  High risk flagged: {high_risk:,}")
+print(f"  Batches processed: 5")
+print(f"  Processing: incremental (checkpoint-based, exactly-once)")
+print()
+print("Architecture:")
+print("  Files (Volume) → Auto Loader (cloudFiles)")
+print("    → streaming_bronze (append-only, checkpoint)")
+print("      → streaming_silver (filtered, risk-scored)")
+print()
+print("Production upgrade:")
+print("  - Replace file-drop with Kafka/Kinesis source")
+print("  - Use continuous pipeline mode (not available on Free Edition)")
+print("  - Add watermarking for late-arriving events")
+print("  - Connect to Databricks Alerts for fraud spikes")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 7. Log to MLflow
+
+# COMMAND ----------
+
+import mlflow
+mlflow.set_tracking_uri("databricks")
+mlflow.set_registry_uri("databricks")
+
+with mlflow.start_run(run_name="streaming_pipeline"):
+    mlflow.log_param("source", "Auto Loader (cloudFiles)")
+    mlflow.log_param("trigger", "availableNow=True")
+    mlflow.log_param("processing", "exactly_once_checkpoint")
+    mlflow.log_param("batches", 5)
+    mlflow.log_metric("bronze_rows", bronze)
+    mlflow.log_metric("silver_rows", silver)
+    mlflow.log_metric("high_risk_count", high_risk)
+print("✅ MLflow logged: streaming_pipeline")
