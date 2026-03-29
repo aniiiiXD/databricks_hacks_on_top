@@ -24,7 +24,8 @@ dev = [
 ]
 
 [project.scripts]
-start-app = "agent_server.start_server:main"
+start-app = "scripts.start_app:main"
+start-server = "agent_server.start_server:main"
 quickstart = "scripts.quickstart:main"
 
 [tool.hatch.build.targets.wheel]
