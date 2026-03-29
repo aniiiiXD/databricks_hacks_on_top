@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Multilingual Support (Indian Languages)
+# MAGIC # BlackIce: Multilingual Support (Indian Languages)
 # MAGIC
 # MAGIC Translates key content to Hindi using Databricks Foundation Model API (Llama 4 Maverick).
 # MAGIC No pip install, no model download — uses the platform's built-in LLM.

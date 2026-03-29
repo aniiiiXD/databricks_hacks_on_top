@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Human Impact — Fraud Victim Support & Financial Inclusion
+# MAGIC # BlackIce: Human Impact — Fraud Victim Support & Financial Inclusion
 # MAGIC
 # MAGIC This is the "why we built this" notebook:
 # MAGIC 1. **Fraud Recovery Guide** — What should a fraud victim do? Step-by-step, mapped to RBI rules
@@ -193,7 +193,7 @@ display(cross_analysis)
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 5. Impact Metrics — What Digital-Artha Enables
+# MAGIC ## 5. Impact Metrics — What BlackIce Enables
 
 # COMMAND ----------
 

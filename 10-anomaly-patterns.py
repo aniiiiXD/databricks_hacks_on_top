@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Fraud Anomaly Pattern Discovery
+# MAGIC # BlackIce: Fraud Anomaly Pattern Discovery
 # MAGIC
 # MAGIC Clusters flagged transactions into named behavioral patterns:
 # MAGIC 1. **Pattern identification** — rule-based + KMeans clustering

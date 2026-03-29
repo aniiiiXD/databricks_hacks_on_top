@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: RAG Pipeline for RBI Circulars
+# MAGIC # BlackIce: RAG Pipeline for RBI Circulars
 # MAGIC
 # MAGIC Builds a Retrieval-Augmented Generation pipeline:
 # MAGIC 1. **FAISS Vector Search** — semantic search over RBI circular chunks
@@ -152,7 +152,7 @@ def rag_answer(query: str, language: str = "english", top_k: int = 5) -> dict:
     elif language.lower() in ["marathi", "mr"]:
         lang_instr = "IMPORTANT: Respond entirely in Marathi. "
 
-    system_prompt = f"""You are Digital-Artha, an expert on RBI regulations.
+    system_prompt = f"""You are BlackIce, an expert on RBI regulations.
 {lang_instr}
 Answer based ONLY on the provided excerpts. Cite sources with [Source N].
 Explain complex regulatory language in simple terms."""

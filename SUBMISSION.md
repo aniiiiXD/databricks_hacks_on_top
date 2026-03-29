@@ -66,7 +66,7 @@ BlackIce detects UPI fraud via ML ensemble (separation score 2.128), discovers 1
 
 ## Demo Video Script (2 minutes)
 
-**0:00-0:10** "Digital-Artha: AI financial intelligence for India. Detects UPI fraud, explains RBI rules, finds government schemes."
+**0:00-0:10** "BlackIce: AI financial intelligence for India. Detects UPI fraud, explains RBI rules, finds government schemes."
 
 **0:10-0:30** Show dashboard Page 1: "250K transactions analyzed. 246 flagged. 10% fraud rate. Here's fraud by category and the hour-day heatmap."
 
@@ -78,7 +78,7 @@ BlackIce detects UPI fraud via ML ensemble (separation score 2.128), discovers 1
 
 **1:30-1:50** Show Genie Space: "fraud rate by category" → instant SQL + chart.
 
-**1:50-2:00** "Digital-Artha. 17 Databricks features. 9 real Indian datasets. Built on Free Edition. Bharat Bricks 2026."
+**1:50-2:00** "BlackIce. 17 Databricks features. 9 real Indian datasets. Built on Free Edition. Bharat Bricks 2026."
 
 ---
 

@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: BhashaBench Finance Evaluation
+# MAGIC # BlackIce: BhashaBench Finance Evaluation
 # MAGIC
 # MAGIC Benchmarks our RAG pipeline against Indian financial knowledge questions.
 # MAGIC Uses a curated subset of BhashaBench-Finance questions to evaluate

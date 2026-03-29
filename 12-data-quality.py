@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Data Quality, Governance & Tiered Architecture
+# MAGIC # BlackIce: Data Quality, Governance & Tiered Architecture
 # MAGIC
 # MAGIC 1. **Unity Catalog Governance** — Tags, comments, lineage
 # MAGIC 2. **Warm Tier** — Materialized views for real-time dashboards

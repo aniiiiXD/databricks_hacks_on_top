@@ -1,5 +1,5 @@
 """
-Digital-Artha Agent Quickstart
+BlackIce Agent Quickstart
 
 Interactive setup wizard that configures the agent environment.
 """
@@ -8,9 +8,9 @@ import os
 
 
 def main():
-    """Run interactive setup for the Digital-Artha agent."""
+    """Run interactive setup for the BlackIce agent."""
     print("=" * 60)
-    print("  Digital-Artha Agent — Quickstart Setup")
+    print("  BlackIce Agent — Quickstart Setup")
     print("=" * 60)
     print()
     print("This wizard will configure your .env file for the agent.")
@@ -65,7 +65,7 @@ def main():
     print("  1. Run:  uv run start-app")
     print("  2. Open: http://localhost:8000")
     print("  3. Check health: http://localhost:8000/health")
-    print("  4. Start chatting with Digital-Artha!")
+    print("  4. Start chatting with BlackIce!")
     print()
     print("Try these queries:")
     print('  - "Show me recent fraud alerts"')

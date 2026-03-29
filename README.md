@@ -2,7 +2,7 @@
 
 **Detects UPI fraud using ML ensemble, discovers fraud rings via graph analysis, answers RBI regulation questions in Hindi/English via RAG, streams live fraud scoring through a Bronze→Silver→Platinum pipeline, and matches rural Indians to 170 government loan schemes — all on Databricks Free Edition.**
 
-> Bharat Bricks Hackathon 2026 | IIT Bombay | Track: Digital-Artha (Economy & Financial Inclusion)
+> Bharat Bricks Hackathon 2026 | IIT Bombay | Track: BlackIce (Economy & Financial Inclusion)
 
 ---
 

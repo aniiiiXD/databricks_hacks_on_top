@@ -1,4 +1,4 @@
-# Digital-Artha Expansion Plan — Final
+# BlackIce Expansion Plan — Final
 
 ## Vision
 A financial intelligence platform that detects fraud rings, helps fraud victims navigate recovery, connects rural Indians to government schemes, and monitors the health of the entire UPI ecosystem — all powered by real Indian data on Databricks.

@@ -1,7 +1,7 @@
 # Team Briefing: What to Say to Judges
 
 ## The 30-Second Pitch
-"India processes 16 billion UPI transactions a month. Fraud is rising. RBI circulars are in English legalese. Rural Indians don't know what loans they qualify for. We built Digital-Artha — a platform that detects fraud patterns using an ML ensemble, answers RBI regulation questions in Hindi via RAG, and connects citizens to 170 government schemes — all on Databricks Free Edition, using real Indian data."
+"India processes 16 billion UPI transactions a month. Fraud is rising. RBI circulars are in English legalese. Rural Indians don't know what loans they qualify for. We built BlackIce — a platform that detects fraud patterns using an ML ensemble, answers RBI regulation questions in Hindi via RAG, and connects citizens to 170 government schemes — all on Databricks Free Edition, using real Indian data."
 
 ---
 

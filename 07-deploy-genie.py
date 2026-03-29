@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Genie Space Deployment
+# MAGIC # BlackIce: Genie Space Deployment
 # MAGIC
 # MAGIC Deploys a Genie Space for natural language analytics.
 
@@ -30,7 +30,7 @@ w = WorkspaceClient()
 host = w.config.host
 
 space_config = {
-    "title": "Digital-Artha: Financial Intelligence",
+    "title": "BlackIce: Financial Intelligence",
     "description": "Ask questions about UPI transactions, fraud patterns, and financial schemes",
     "warehouse_id": warehouse_id,
     "version": 2,
@@ -64,7 +64,7 @@ space_config = {
         ]
     },
     "instructions": {
-        "text_instructions": f"""You are a financial analytics assistant for Digital-Artha.
+        "text_instructions": f"""You are a financial analytics assistant for BlackIce.
 - ensemble_flag = true means the transaction is flagged as potentially fraudulent
 - final_risk_tier values: low, medium, high, critical
 - ensemble_score: 0-1, higher = riskier

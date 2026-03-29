@@ -426,7 +426,7 @@ host = w.config.host
 
 # Build space config (based on starter kit's serialized_space.json)
 space_config = {
-    "title": "Digital-Artha Financial Intelligence",
+    "title": "BlackIce Financial Intelligence",
     "description": "Ask questions about UPI transactions, fraud patterns, and financial schemes",
     "warehouse_id": dbutils.widgets.get("warehouse_id"),
     "version": 2,
@@ -457,7 +457,7 @@ space_config = {
         ]
     },
     "instructions": {
-        "text_instructions": """You are a financial analytics assistant for Digital-Artha.
+        "text_instructions": """You are a financial analytics assistant for BlackIce.
         - When asked about fraud, query the anomaly_flag and risk_label columns
         - Use the financial_metrics metric view for aggregate queries
         - Amount is in Indian Rupees (INR)

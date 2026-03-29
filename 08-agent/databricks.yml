@@ -26,7 +26,7 @@ resources:
   apps:
     digital-artha:
       name: digital-artha
-      description: "Digital-Artha: AI-powered financial intelligence for India — fraud detection, RBI regulations, loan eligibility"
+      description: "BlackIce: AI-powered financial intelligence for India — fraud detection, RBI regulations, loan eligibility"
       source_code_path: .
       config:
         command:

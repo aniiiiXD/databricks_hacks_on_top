@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Fraud Ring Detection (Graph Analysis)
+# MAGIC # BlackIce: Fraud Ring Detection (Graph Analysis)
 # MAGIC
 # MAGIC Builds a sender↔receiver transaction graph and detects:
 # MAGIC 1. **Fraud Rings** — Connected components with high fraud density

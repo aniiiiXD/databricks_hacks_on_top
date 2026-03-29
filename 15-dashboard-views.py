@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Dashboard Power Views
+# MAGIC # BlackIce: Dashboard Power Views
 # MAGIC
 # MAGIC Pre-computed views for visually stunning dashboard widgets.
 # MAGIC Run this once — then add these views as data sources in your dashboard.

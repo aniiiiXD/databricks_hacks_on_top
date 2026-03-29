@@ -1,4 +1,4 @@
-# Digital-Artha: AI-Powered Financial Intelligence for India
+# BlackIce: AI-Powered Financial Intelligence for India
 
 > UPI fraud detection + RBI circular intelligence + multilingual financial inclusion — all on Databricks Free Edition.
 
@@ -6,7 +6,7 @@
 
 ## The Pitch (30 seconds)
 
-*"India processes 16 billion UPI transactions a month, but fraud detection and financial literacy haven't kept pace. Digital-Artha catches suspicious transactions using ML, explains RBI regulations in your language, and helps rural users find loans they qualify for — all running on Databricks Free Edition, CPU-only, using Indian-built models."*
+*"India processes 16 billion UPI transactions a month, but fraud detection and financial literacy haven't kept pace. BlackIce catches suspicious transactions using ML, explains RBI regulations in your language, and helps rural users find loans they qualify for — all running on Databricks Free Edition, CPU-only, using Indian-built models."*
 
 ---
 
@@ -344,7 +344,7 @@ Uses the starter kit's exact architecture: LangGraph + MCP + MLflow Responses AP
 
 **System prompt:**
 ```
-You are Digital-Artha, a financial intelligence assistant for Indian citizens.
+You are BlackIce, a financial intelligence assistant for Indian citizens.
 You help with: UPI fraud awareness, RBI regulations, government loan schemes.
 Always cite your sources. Respond in the user's language.
 Use the circular-search tool for RBI regulation questions.
@@ -580,7 +580,7 @@ digital-artha/
 ## Demo Script (5 minutes)
 
 **0:00 - 0:30 — Problem Statement**
-"India's UPI processes 16 billion transactions monthly. Fraud is rising. RBI circulars are impenetrable English legalese. Rural Indians don't know what government loans they qualify for. We built Digital-Artha to solve all three."
+"India's UPI processes 16 billion transactions monthly. Fraud is rising. RBI circulars are impenetrable English legalese. Rural Indians don't know what government loans they qualify for. We built BlackIce to solve all three."
 
 **0:30 - 1:30 — Architecture Walkthrough**
 Show architecture diagram. Walk through: 3 data sources → Auto Loader → DLT pipeline (show the pipeline DAG!) → 3 AI engines → unified agent. Name every Databricks feature. Show Unity Catalog lineage graph.
@@ -594,4 +594,4 @@ Show architecture diagram. Walk through: 3 data sources → Auto Loader → DLT 
 Show MLflow: model comparison, precision/recall, LLM traces. Show Lakeview dashboard. Run a Genie Space query: "fraud rate by category this quarter". Show DLT pipeline quality metrics.
 
 **4:00 - 5:00 — Impact & Wrap**
-"Digital-Artha makes financial safety and inclusion accessible to every Indian, in their language. Built entirely on Databricks Free Edition with Indian models. 15 Databricks features. 3 AI paradigms. 1 unified agent."
+"BlackIce makes financial safety and inclusion accessible to every Indian, in their language. Built entirely on Databricks Free Edition with Indian models. 15 Databricks features. 3 AI paradigms. 1 unified agent."

@@ -1,5 +1,5 @@
 """
-Utility functions for the Digital-Artha agent server.
+Utility functions for the BlackIce agent server.
 
 - Session management (conversation ID extraction)
 - Workspace client (per-request auth via forwarded tokens)

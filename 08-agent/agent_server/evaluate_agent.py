@@ -1,5 +1,5 @@
 """
-Digital-Artha Agent Evaluation
+BlackIce Agent Evaluation
 
 Tests the agent with realistic scenarios covering:
 - Fraud alert lookup (new tool)
@@ -127,7 +127,7 @@ def run_evaluation():
         ],
     )
 
-    print("\n=== Digital-Artha Agent Evaluation Results ===")
+    print("\n=== BlackIce Agent Evaluation Results ===")
     print(results.tables["eval_results"])
     return results
 

@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Loan Eligibility Engine
+# MAGIC # BlackIce: Loan Eligibility Engine
 # MAGIC
 # MAGIC Matches users to government financial inclusion schemes:
 # MAGIC 1. **Rule-based matching** — PySpark filter on eligibility criteria

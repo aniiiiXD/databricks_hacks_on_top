@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Fraud Detection ML Pipeline
+# MAGIC # BlackIce: Fraud Detection ML Pipeline
 # MAGIC
 # MAGIC **Ensemble anomaly detection** (pure sklearn — serverless compatible):
 # MAGIC 1. **Isolation Forest** — unsupervised outlier detection

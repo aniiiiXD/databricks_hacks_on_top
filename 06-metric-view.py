@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Metric View + Analytics Views
+# MAGIC # BlackIce: Metric View + Analytics Views
 # MAGIC
 # MAGIC Creates analytics views over fraud-enriched transactions.
 # MAGIC Tries YAML metric view first, falls back to regular SQL views.

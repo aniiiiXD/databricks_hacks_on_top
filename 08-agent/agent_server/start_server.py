@@ -1,5 +1,5 @@
 """
-Digital-Artha Agent Server
+BlackIce Agent Server
 
 Starts the MLflow AgentServer with:
 - Startup validation (env vars, Databricks connectivity)
@@ -101,7 +101,7 @@ def main():
     validate_environment()
 
     port = int(os.environ.get("PORT", "8000"))
-    logger.info(f"Digital-Artha Agent Server starting on port {port}")
+    logger.info(f"BlackIce Agent Server starting on port {port}")
     logger.info(f"Chat UI:  http://localhost:{port}")
     logger.info(f"API:      http://localhost:{port}/invocations")
     logger.info(f"Health:   http://localhost:{port}/health")

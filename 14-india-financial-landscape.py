@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: India's Financial Landscape
+# MAGIC # BlackIce: India's Financial Landscape
 # MAGIC
 # MAGIC Ingests macro-level Indian financial data to tell the story:
 # MAGIC 1. **UPI Explosion** — Digital payment growth 2020-2025
@@ -8,7 +8,7 @@
 # MAGIC 3. **Victims Struggle** — RBI ombudsman complaint trends
 # MAGIC 4. **Inclusion Gaps** — Jan Dhan penetration vs internet access by state
 # MAGIC
-# MAGIC This is the "why" behind Digital-Artha.
+# MAGIC This is the "why" behind BlackIce.
 
 # COMMAND ----------
 
@@ -209,4 +209,4 @@ print("Tags applied to new tables.")
 # MAGIC - `india_internet_penetration` — Digital divide by state (36 states)
 # MAGIC - `state_vulnerability_index` — Composite: fraud risk × digital divide × inclusion gap
 # MAGIC
-# MAGIC **The story:** UPI exploded → fraud followed → digitally naive states suffer most → Digital-Artha helps.
+# MAGIC **The story:** UPI exploded → fraud followed → digitally naive states suffer most → BlackIce helps.

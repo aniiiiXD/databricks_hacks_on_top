@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Fraud Rate Forecasting
+# MAGIC # BlackIce: Fraud Rate Forecasting
 # MAGIC
 # MAGIC Uses Databricks `ai_forecast()` to predict future fraud trends.
 # MAGIC This is a built-in SQL function — no ML code needed.

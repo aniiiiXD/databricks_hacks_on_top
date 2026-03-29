@@ -1,4 +1,4 @@
-# Digital-Artha Architecture
+# BlackIce Architecture
 
 ## 1. Data Flow Architecture
 

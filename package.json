@@ -1,0 +1,24 @@
+{
+  "name": "databricks",
+  "version": "1.0.0",
+  "description": "**Detects UPI fraud using ML, answers RBI regulation questions in Hindi/English via RAG, and matches rural Indians to government loan schemes they qualify for — all on Databricks Free Edition.**",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aniiiiXD/databricks_hacks_on_top.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/aniiiiXD/databricks_hacks_on_top/issues"
+  },
+  "homepage": "https://github.com/aniiiiXD/databricks_hacks_on_top#readme",
+  "dependencies": {
+    "pptxgenjs": "^4.0.1"
+  }
+}

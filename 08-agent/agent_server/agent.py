@@ -1,5 +1,5 @@
 """
-Digital-Artha: Financial Intelligence Agent
+BlackIce: Financial Intelligence Agent
 
 LangGraph ReAct agent with MCP tools + conversation memory + MLflow Responses API.
 
@@ -70,7 +70,7 @@ mlflow.set_registry_uri("databricks")
 llm = ChatDatabricks(endpoint=LLM_ENDPOINT, temperature=0.1, max_tokens=1000)
 
 # --- System Prompt ---
-SYSTEM_PROMPT = """You are Digital-Artha, an AI-powered financial intelligence assistant for Indian citizens.
+SYSTEM_PROMPT = """You are BlackIce, an AI-powered financial intelligence assistant for Indian citizens.
 
 CAPABILITIES:
 1. **UPI Fraud Detection** — Look up flagged fraud alerts, explain why transactions were flagged, show risk scores and patterns from the ML ensemble pipeline.

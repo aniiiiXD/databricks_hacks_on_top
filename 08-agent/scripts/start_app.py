@@ -52,7 +52,7 @@ class ProcessManager:
                 print(f"✓ {name} ready!")
                 if self.backend_ready and self.frontend_ready:
                     print(f"\n{'='*50}")
-                    print(f"✓ Digital-Artha is ready!")
+                    print(f"✓ BlackIce is ready!")
                     print(f"✓ Open: http://localhost:{self.port}")
                     print(f"{'='*50}\n")
         proc.wait()

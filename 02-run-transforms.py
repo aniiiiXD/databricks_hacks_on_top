@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Data Transforms (Bronze → Silver → Gold)
+# MAGIC # BlackIce: Data Transforms (Bronze → Silver → Gold)
 # MAGIC
 # MAGIC Runs all transformations as regular SQL (no DLT required).
 # MAGIC Creates Silver (cleaned) and Gold (business-ready) tables.

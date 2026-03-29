@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Digital-Artha: Transaction Relationship Graph
+# MAGIC # BlackIce: Transaction Relationship Graph
 # MAGIC
 # MAGIC Builds sender↔receiver relationship graph to discover:
 # MAGIC 1. **High-volume corridors** — who sends money to whom most frequently
